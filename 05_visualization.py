@@ -7,13 +7,13 @@ from swann.preprocessing import (apply_ica, get_raw,
                                  mark_autoreject, slowfast2epochs_indices)
 from swann.viz import (plot_bursting, plot_power, plot_spectrogram,
                        plot_group_bursting, plot_group_power,
-                       plot_burst_shape)
+                       plot_burst_shape, plot_erp)
 
 config = get_config()
 layout = get_layout()
 
 ieegfs = layout.get(task=config['task'],
-                    suffix='ieeg', extension='bdf')
+                    suffix='ieeg', extension='vhdr')
 ieegfs += layout.get(task=config['task'],
                      suffix='ieeg', extension='edf')
 ieegfs = exclude_subjects(ieegfs)
@@ -35,11 +35,13 @@ for ieegf in ieegfs:
                           for event in my_events()}
     events = get_events(raw, exclude_events=epo_reject_indices)
     picks = [ch for ch in raw.ch_names
-             if ('SMA' in ch or 'PM' in ch) and ch not in raw.info['bads']] 
+             if ('SMA' in ch or 'PM' in ch) and ch not in raw.info['bads']]
     for event in events:
         these_events = select_events(events[event], all_indices)
         bl_events = select_events(events[config['baseline_event']],
                                   all_indices)
+        plot_erp(ieegf, raw, event, these_events, bl_events, picks=picks,
+                 overwrite=overwrite)
         #for pick in picks:
         #    plot_spectrogram(ieegf, raw, event, these_events, bl_events, ncols=20,
         #                     picks=pick, plot_bursts=True, overwrite=overwrite)
@@ -61,6 +63,7 @@ for ieegf in ieegfs:
         for pick in picks:
             plot_bursting(ieegf, event, these_events, method='all', picks=[pick], overwrite=overwrite)
     '''
+    '''
     for event in events:
         for name, indices in {'All': all_indices, 'Slow': slow_indices,
                               'Fast': fast_indices}.items():
@@ -71,6 +74,7 @@ for ieegf in ieegfs:
                         for name in ['All', 'Slow', 'Fast']}
         for pick in picks:
             plot_power(ieegf, event, these_events, raw.info, picks=[pick], overwrite=overwrite)
+            '''
         '''plot_burst_shape(eegf, event, {name: these_events},
                          raw.info, overwrite=overwrite)'''
 
@@ -86,7 +90,7 @@ for name, indices in {'All': all_indices, 'Slow': slow_indices,
                          overwrite=overwrite)
         plot_group_power(eegfs, event, these_events_all[event],
                          picks=['C3', 'C4'], overwrite=overwrite)
-'''
+
 
 for event in my_events():
     these_events = {'Slow': these_events_all[event]['Slow'],
@@ -106,3 +110,4 @@ tfr_evo, itc  = tfr_morlet(epochs, np.logspace(np.log10(5), np.log10(250), 20), 
 for pick in picks:
     fig = tfr_evo.plot(picks=pick, dB=True)
     fig.savefig('sub-1_%s_spectrogram.eps' % pick)
+'''
