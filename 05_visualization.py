@@ -35,6 +35,8 @@ for ieegf in ieegfs:
     events = get_events(raw, exclude_events=epo_reject_indices)
     picks = [ch for ch in raw.ch_names
              if ('SMA' in ch or 'PM' in ch) and ch not in raw.info['bads']]
+    if not picks:
+        picks = None
     for event in events:
         these_events = select_events(events[event], all_indices)
         bl_events = select_events(events[config['baseline_event']],
