@@ -3,17 +3,9 @@ import numpy as np
 from swann.utils import (get_config, get_layout, get_events,
                          exclude_subjects, get_behf,
                          my_events, select_events)
-<<<<<<< HEAD
 from swann.preprocessing import get_raw, slowfast2epochs_indices
-from swann.viz import plot_spectrogram
+from swann.viz import plot_spectrogram, plot_erp
 
-=======
-from swann.preprocessing import (apply_ica, get_raw,
-                                 mark_autoreject, slowfast2epochs_indices)
-from swann.viz import (plot_bursting, plot_power, plot_spectrogram,
-                       plot_group_bursting, plot_group_power,
-                       plot_burst_shape, plot_erp)
->>>>>>> ee7633791c0318039bb7ea91442d30b775f9db73
 
 config = get_config()
 layout = get_layout()
