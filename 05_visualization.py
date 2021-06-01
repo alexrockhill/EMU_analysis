@@ -28,7 +28,6 @@ for ieegf in ieegfs:
     behf = get_behf(ieegf)
     all_indices, slow_indices, fast_indices = slowfast2epochs_indices(behf)
     raw = get_raw(ieegf)  # raw = apply_ica(ieegf)
-    raw.load_data()
     # mark_autoreject(ieegf, event, return_saved=True)
     epo_reject_indices = {event: list()
                           for event in my_events()}
@@ -36,7 +35,8 @@ for ieegf in ieegfs:
     picks = [ch for ch in raw.ch_names
              if ('SMA' in ch or 'PM' in ch) and ch not in raw.info['bads']]
     if not picks:
-        picks = None
+        picks = [raw.ch_names[i] for i in
+                 np.random.choice(range(len(raw.ch_names)), 16, replace=False)]
     for event in events:
         these_events = select_events(events[event], all_indices)
         bl_events = select_events(events[config['baseline_event']],
