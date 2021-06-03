@@ -9,7 +9,7 @@ layout = get_layout()
 ieegfs = (layout.get(task=config['task'],
                      suffix='ieeg', extension='bdf') +
           layout.get(task=config['task'],
-                     suffix='ieeg', extension='vhdr'))
+                     suffix='ieeg', extension='edf'))
 ieegfs = exclude_subjects(ieegfs)
 
 overwrite_eeg = \

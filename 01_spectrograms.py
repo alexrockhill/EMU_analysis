@@ -8,7 +8,7 @@ import mne_bids
 import img_pipe
 
 bids_root = '/home/alex/SwannLab/EMU_data_BIDS'
-fig_dir = '/home/alex/Downloads/spectrograms'
+fig_dir = './derivatives/spectrograms'
 
 if not op.isdir(fig_dir):
     os.makedirs(fig_dir)
