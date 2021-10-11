@@ -5,10 +5,9 @@ import matplotlib.pyplot as plt
 
 import mne
 import mne_bids
-import img_pipe
 
 bids_root = '/home/alex/SwannLab/EMU_data_BIDS'
-fig_dir = './derivatives/spectrograms'
+fig_dir = op.join(bids_root, 'derivatives', 'spectrograms')
 
 if not op.isdir(fig_dir):
     os.makedirs(fig_dir)
@@ -20,16 +19,9 @@ for sub in [1, 2, 5, 6, 9, 10, 11, 12]:
     path = mne_bids.BIDSPath(root=bids_root, subject=sub,
                              task='SlowFast')
     raw = mne_bids.read_raw_bids(path)
-    raw.pick_types(seeg=True)
+    raw.pick_types(seeg=True)  # no stim, other channels
     events, event_id = mne.events_from_annotations(raw)
     event_id.pop('ISI Onset')
-    elecs = img_pipe.utils.load_electrodes()
-    no_dig = [ch for ch in raw.ch_names if ch not in elecs]
-    print(f'Dropping no-digitization {no_dig}')
-    raw.drop_channels(no_dig)
-    dig = mne.channels.make_dig_montage(
-        {name: elecs[name][:3] for name in elecs}, coord_frame='mri_voxel')
-    raw.set_montage(dig)
     # crop first to lessen amount of data, then load
     raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
              tmax=events[:, 0].max() / raw.info['sfreq'] + 5)

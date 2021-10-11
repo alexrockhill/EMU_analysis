@@ -2,21 +2,16 @@
 Welcome to the analysis of intracranial data from epilepsy patients at Oregon Health & Science University written by Alex Rockhill (arockhil@uoregon.edu) at the University of Oregon department of Human Physiology. 
 
 At this point to replicate and walk through the analysis, you will need:
-1) python installed, using Anaconda is recommended (https://www.anaconda.com/distribution/#download-section)
-2) the SwannLabResources module installed (https://github.com/alexrockhill/SwannLabResources)
-   a) run the following in a terminal in the directory where you have space `git clone https://github.com/alexrockhill/SwannLabResources.git`
-   b) run `cd SwannLabResources`
-   c) run `python setup.py install`
+1) To install python, using Anaconda is recommended (https://www.anaconda.com/distribution/#download-section)
+2) Install MNE including the development environment, see https://mne.tools/dev/install/mne_python.html
 3) the Github Respository for this analysis (https://github.com/alexrockhill/EMU_analysis)
-   a) change directory to where you want to put the project (make sure to cd out of SwannLabResources)
+   a) change directory to where you want to put the project
    b) run `git clone https://github.com/alexrockhill/EMU_analysis`
-4) the BIDS formatted data on OpenNeuro (link) (this was done using the swann.bids.edf2bids.py script)
-5) the python environment configured
-   a) cd into SwannLabResources
-   b) run `conda create -f environment.yml -n swannlab`
-   c) run `conda activate swannlab`.
-6) update the filepaths in the params.json file to match your filepaths
-7) run `python {filename}.py` substituting each numbered python file in EMU_analysis in order for {filename}
+4) the BIDS formatted data on OpenNeuro (link)
+
+Then you can run each python file in order, e.g. `python 1_gui.py`
+
+For information on how this dataset was converted to BIDS, see https://mne.tools/mne-bids/dev/auto_examples/convert_ieeg_to_bids.html
 
 # References
 Yarkoni et al., (2019). PyBIDS: Python tools for BIDS datasets. Journal of Open Source Software, 4(40), 1294, https://doi.org/10.21105/joss.01294

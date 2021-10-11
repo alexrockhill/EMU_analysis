@@ -45,7 +45,7 @@ data = [op.join(data_dir, f) for f in os.listdir(data_dir)
 with np.load(data[0]) as data_dict:
     data_dict = {k: v for k, v in data_dict.items()}
 
-n_epochs, n_freqs, n_times = data_dict[event].shape
+_, n_freqs, n_times = data_dict[event].shape
 
 scores = dict()
 imgs = dict()
@@ -85,11 +85,12 @@ for ch_data in tqdm(data):
     classifier.fit(X_train_pca, y_train)
     score = classifier.score(X_test_pca, y_test)
     scores[f'sub-{sub}_ch-{ch}'] = score
+    scores[f'sub-{sub}_ch-{ch}_n_epochs'] == y_test.size
     eigenvectors = pca.components_.reshape(
         (n_components, n_freqs, n_times))
     img = np.sum(classifier.coef_[0][:, np.newaxis, np.newaxis] * eigenvectors,
                  axis=0)
-    imgs[ch_data] = img
+    imgs[f'sub-{sub}_ch-{ch}'] = img
     if score > 0.75:
         fig, ax = plt.subplots()
         fig.suptitle(f'Subject {sub} {ch} {bl_event}-{event} Linear SVM'
@@ -144,7 +145,8 @@ for ch_data in tqdm(data):
             for ax in axes.flatten():
                 ax.axis('off')
             name_str = name.replace(' ', '_').lower()
-            fig.savefig(op.join(out_dir, out_fname + f'_{name_str}.png'))
+            fig.savefig(op.join(out_dir, out_fname + f'_{name_str}.png'),
+                        dpi=300)
             plt.close(fig)
 
 np.savez_compressed(op.join(out_dir, 'scores.npz'), **scores)
@@ -158,5 +160,5 @@ fig.suptitle(f'{bl_event}-{event} PCA+Linear SVM\nClassification '
 plot_image(fig, ax, feature_map, data_dict, vmin=feature_map.min(),
            vmax=feature_map.max())
 fig.savefig(op.join(out_dir, f'{bl_event}-{event}'
-                    '_features.png').replace(' ', '_'))
+                    '_features.png').replace(' ', '_'), dpi=300)
 plt.close(fig)
