@@ -1,1 +1,9 @@
 BIDS_ROOT = '/home/alex/SwannLab/EMU_data_BIDS'
+DATA_DIR = '/home/alex/SwannLab/EMU_analysis'
+SUBJECTS = [1, 2, 5, 6, 9, 10, 11, 12]
+TASK = 'SlowFast'
+TEMPLATE = 'cvs_avg35_inMNI152'
+N_COMPONENTS = 50
+BASELINE_EVENT, EVENT = 'Fixation', 'Response'
+ATLAS = 'aparc+aseg'
+ALPHA = 0.01

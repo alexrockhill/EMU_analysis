@@ -9,11 +9,14 @@ from sklearn.decomposition import PCA
 
 import mne
 import matplotlib.pyplot as plt
+from params import DATA_DIR as data_dir
+from params import BASELINE_EVENT as bl_event
+from params import EVENT as event
+from params import N_COMPONENTS as n_components
 
-n_components = 50
-bl_event, event = 'Fixation', 'Response'
-data_dir = './derivatives/spectrograms'
-out_dir = f'./derivatives/pca_{event.lower()}_classifier'
+source_dir = op.join(data_dir, 'derivatives', 'spectrograms')
+out_dir = op.join(data_dir, 'derivatives',
+                  f'pca_{event.lower()}_classifier')
 
 if not op.isdir(out_dir):
     os.makedirs(out_dir)
@@ -39,7 +42,7 @@ def plot_image(fig, ax, img, data_dict, vmin=None, vmax=None,
         fig.colorbar(c)
 
 
-data = [op.join(data_dir, f) for f in os.listdir(data_dir)
+data = [op.join(source_dir, f) for f in os.listdir(source_dir)
         if op.splitext(f)[-1] == '.npz']
 
 with np.load(data[0]) as data_dict:

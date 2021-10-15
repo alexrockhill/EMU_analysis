@@ -5,19 +5,21 @@ import matplotlib.pyplot as plt
 
 import mne
 import mne_bids
+from params import DATA_DIR as data_dir
+from params import BIDS_ROOT as bids_root
+from params import SUBJECTS as subjects
+from params import TASK as task
 
-bids_root = '/home/alex/SwannLab/EMU_data_BIDS'
-fig_dir = op.join(bids_root, 'derivatives', 'spectrograms')
+fig_dir = op.join(data_dir, 'derivatives', 'spectrograms')
 
 if not op.isdir(fig_dir):
     os.makedirs(fig_dir)
 
-for sub in [1, 2, 5, 6, 9, 10, 11, 12]:
+for sub in subjects:
     sub = str(sub)
     os.environ['SUBJECT'] = f'sub-{sub}'
     os.environ['SUBJECTS_DIR'] = op.join(bids_root, 'derivatives')
-    path = mne_bids.BIDSPath(root=bids_root, subject=sub,
-                             task='SlowFast')
+    path = mne_bids.BIDSPath(root=bids_root, subject=sub, task=task)
     raw = mne_bids.read_raw_bids(path)
     raw.pick_types(seeg=True)  # no stim, other channels
     events, event_id = mne.events_from_annotations(raw)

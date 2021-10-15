@@ -8,55 +8,64 @@ import matplotlib.pyplot as plt
 
 from scipy import stats
 
-alpha = 0.01
-event = 'Response'
-data_dir = f'./derivatives/pca_{event.lower()}_classifier'
-fig_dir = f'./derivatives/plots'
-atlas = 'desikan-killiany'
-template = 'fsaverage'
-subs = [1, 2, 5, 6, 9, 10, 11, 12]
-subjects_dir = '/home/alex/SwannLab/EMU_data_BIDS/derivatives'
-os.environ['SUBJECTS_DIR'] = subjects_dir
+from params import DATA_DIR as data_dir
+from params import BIDS_ROOT as bids_root
+from params import SUBJECTS as subjects
+from params import TASK as task
+from params import TEMPLATE as template
+from params import ATLAS as aseg
+from params import ALPHA as alpha
+from params import EVENT as event
+
+source_dir = op.join(data_dir, 'derivatives',
+                     f'pca_{event.lower()}_classifier')
+fig_dir = op.join(data_dir, 'derivatives', 'plots')
+
+subjects_dir = op.join(bids_root, 'derivatives')
 
 if not op.isdir(fig_dir):
     os.makedirs(fig_dir)
 
 
-with np.load(op.join(data_dir, 'scores.npz')) as scores:
+with np.load(op.join(source_dir, 'scores.npz')) as scores:
     scores = {k: v for k, v in scores.items()}
 
 
-with np.load(op.join(data_dir, 'imgs.npz')) as imgs:
+with np.load(op.join(source_dir, 'imgs.npz')) as imgs:
     imgs = {k: v for k, v in imgs.items()}
 
 
-trans = mne.coreg.estimate_head_mri_t('fsaverage', subjects_dir)
+trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 # get plotting information
-elec_pos = dict()
-elec_labels = dict()
-anat_dict = dict()
-for sub in subs:
-    os.environ['SUBJECT'] = f'sub-{sub}'
-    raw = mne.io.read_raw_fif(op.join(
+positions = dict()  # positions in template space
+anat_labels = dict()  # labels in individual space
+anat_scores = dict()  # scores per label
+for sub in subjects:
+    info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
-        f'sub-{sub}_template-{template}_task-SlowFast_ieeg.fif'),
-        preload=False)
-    montage = raw.get_montage()
+        f'sub-{sub}_template-{template}_task-{task}_info.fif'))
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
     montage.apply_trans(trans)
-    ch_pos = montage.get_position()['ch_pos']
-    for ch_data in imgs:
+    labels, colors = mne.get_montage_volume_labels(
+        montage, f'sub-{sub}', subjects_dir=subjects_dir,
+        aseg=aseg)
+    ch_pos = montage.get_positions()['ch_pos']
+    for ch_data in imgs:  # bit of a hack to match subject IDs
         sub2, ch = [phrase.split('-')[1] for phrase in
                     op.basename(ch_data).split('_')[0:2]]
         if int(sub2) == sub:
-            ch2 = {ch2.replace(' ', ''): ch2 for ch2 in ch_pos}[ch]
-            label = json.loads(elecs[ch2][4])[atlas]
+            ch2 = {ch2.replace(' ', ''): ch2 for ch2 in info.ch_names}[ch]
             score = float(scores[f'sub-{sub}_ch-{ch}'])
-            elec_pos[f'sub-{sub}_ch-{ch}'] = elecs[ch2][:3]
-            elec_labels[f'sub-{sub}_ch-{ch}'] = label
-            if label in anat_dict:
-                anat_dict[label].append(score)
-            else:
-                anat_dict[label] = [score]
+            positions[f'sub-{sub}_ch-{ch}'] = ch_pos[ch2]
+            anat_labels[f'sub-{sub}_ch-{ch}'] = \
+                {label: colors[label] for label in labels[ch2]}
+            for label in labels[ch2]:
+                if label in anat_scores:
+                    anat_scores[label].append(score)
+                else:
+                    anat_scores[label] = [score]
 
 
 # Figure 1: histogram of classification accuracies with
@@ -94,7 +103,7 @@ fig.savefig(op.join(fig_dir, 'score_hist.png'), dpi=300)
 
 # Figure 2: distribution of classification accuracies across
 # subjects compared to CSP.
-dist = {str(sub): dict(sig=list(), not_sig=list()) for sub in subs}
+dist = {str(sub): dict(sig=list(), not_sig=list()) for sub in subjects}
 for ch_data in imgs:
     sub, ch = [phrase.split('-')[1] for phrase in
                op.basename(ch_data).split('_')[0:2]]
@@ -141,10 +150,6 @@ for sub in dist:
 
 #   Part 1: all electrodes over 0.75 classification, colored by score.
 
-with np.load('./derivatives/elec_pos.npz') as elec_pos:
-    elec_pos = {k: v for k, v in elec_pos.items()}
-
-
 def plot_brain(rois):
     renderer = mne.viz.backends.renderer.create_3d_figure(
         size=(1200, 900), bgcolor='w', scene=False)
@@ -156,8 +161,15 @@ def plot_brain(rois):
     return renderer
 
 
+# TO DO:
+# re-code all individual plots (figure)
+# recode group significant plots
+# plot rois by accuracy (darker color)
+# best electrode labels wheel
+# top ten contacts labels plot wheel
+
+
 # plot electrodes with high accuracies
-rois = get_rois('all', template=template, opacity=0.1)
 renderer = plot_brain(rois)
 
 cmap = plt.get_cmap('jet')
