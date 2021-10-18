@@ -37,7 +37,7 @@ with np.load(op.join(source_dir, 'imgs.npz')) as imgs:
 
 trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 # get plotting information
-positions = dict()  # positions in template space
+ch_positions = dict()  # positions in template space
 anat_labels = dict()  # labels in individual space
 anat_scores = dict()  # scores per label
 for sub in subjects:
@@ -52,13 +52,14 @@ for sub in subjects:
         montage, f'sub-{sub}', subjects_dir=subjects_dir,
         aseg=aseg)
     ch_pos = montage.get_positions()['ch_pos']
+    ch_no_space_mapping = {ch2.replace(' ', ''): ch2 for ch2 in ch_pos}
     for ch_data in imgs:  # bit of a hack to match subject IDs
         sub2, ch = [phrase.split('-')[1] for phrase in
                     op.basename(ch_data).split('_')[0:2]]
         if int(sub2) == sub:
-            ch2 = {ch2.replace(' ', ''): ch2 for ch2 in info.ch_names}[ch]
+            ch2 = ch_no_space_mapping[ch]
             score = float(scores[f'sub-{sub}_ch-{ch}'])
-            positions[f'sub-{sub}_ch-{ch}'] = ch_pos[ch2]
+            ch_positions[f'sub-{sub}_ch-{ch}'] = ch_pos[ch2]
             anat_labels[f'sub-{sub}_ch-{ch}'] = \
                 {label: colors[label] for label in labels[ch2]}
             for label in labels[ch2]:
@@ -143,6 +144,101 @@ for sub in dist:
     fig.text(0.01, 0.5, f'Subject {sub}', fontsize=14, fontweight='bold',
              rotation='vertical', va='center')
     fig.savefig(op.join(fig_dir, f'sub-{sub}_score_hist.png'), dpi=300)
+
+
+# Figure 3: Individual implant plots to show sampling
+fig, axes = plt.subplots(len(subjects), 3, figsize=(4, 12))
+for ax in axes.flatten():
+    for direction in ('left', 'right', 'top', 'bottom'):
+        ax.spines[direction].set_visible(False)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.invert_yaxis()
+
+
+axes[0, 0].set_title('Right front')
+axes[0, 1].set_title('Top down')
+axes[0, 2].set_title('Left front')
+for i, sub in enumerate(subjects):
+    axes[i, 0].set_ylabel(f'Subject {sub}')
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
+    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
+    brain = mne.viz.Brain(f'sub-{sub}', subjects_dir=subjects_dir,
+                          cortex='low_contrast', alpha=0.2, background='white')
+    brain.add_sensors(info, trans)
+    brain.show_view(azimuth=60, elevation=100, distance=300)
+    axes[i, 0].imshow(brain.screenshot())
+    brain.show_view(azimuth=90, elevation=0)
+    axes[i, 1].imshow(brain.screenshot())
+    brain.show_view(azimuth=120, elevation=100)
+    axes[i, 2].imshow(brain.screenshot())
+    brain.close()
+
+
+fig.subplots_adjust(left=0.07, right=1, top=0.97, bottom=0,
+                    wspace=0, hspace=0)
+fig.savefig(op.join(fig_dir, 'coverage.png'), dpi=300)
+
+
+# Figure 4: Plots of electrodes with high classification accuracies
+# based on their time-frequency characteristics.
+
+#   Part 1: all electrodes over 0.75 classification, colored by score.
+
+# plot electrodes with high accuracies
+brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
+                    subjects_dir=subjects_dir, units='m')
+brain = mne.viz.Brain(template, **brain_kwargs)
+
+cmap = plt.get_cmap('jet')
+for ch_data in imgs:
+    sub, ch = [phrase.split('-')[1] for phrase in
+               op.basename(ch_data).split('_')[0:2]]
+    score = scores[f'sub-{sub}_ch-{ch}']
+    if score > 0.75:
+        x, y, z = ch_pos[f'sub-{sub}_ch-{ch}']
+        brain._renderer.sphere(
+            center=(x, y, z), color=cmap(score)[:3],
+            scale=0.005)
+
+fig, axes = plt.subplots(1, 3, figsize=(8, 4))
+for ax in axes.flatten():
+    ax.axis('off')
+    ax.invert_yaxis()
+
+
+axes[0].set_title('Right front')
+axes[1].set_title('Top down')
+axes[2].set_title('Left front')
+brain.show_view(azimuth=60, elevation=100, distance=.3)
+axes[0].imshow(brain.screenshot())
+brain.show_view(azimuth=90, elevation=0)
+axes[1].imshow(brain.screenshot())
+brain.show_view(azimuth=120, elevation=100)
+axes[2].imshow(brain.screenshot())
+brain.close()
+
+fig.subplots_adjust(left=0, right=1, top=1, bottom=0,
+                    wspace=0, hspace=0)
+fig.savefig(op.join(fig_dir, 'high_accuracy.png'), dpi=300)
+
+# save colorbar
+fig, ax = plt.subplots(figsize=(1, 6))
+gradient = np.linspace(0, 1, 256)
+gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
+ax.imshow(gradient, aspect='auto', cmap=cmap)
+ax.set_xticks([])
+ax.invert_yaxis()
+ax.yaxis.tick_right()
+ax.set_yticks(np.array([0, 0.25, 0.5, 0.75, 1]) * 256)
+ax.set_yticklabels([0, 0.25, 0.5, 0.75, 1])
+fig.tight_layout()
+fig.savefig(op.join(fig_dir, 'colorbar.png'))
+
+#   Part 2: all electrodes with pre-movement high-beta decreases.
+
 
 
 # Figure 3: Plots of electrodes with high classification accuracies
