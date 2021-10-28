@@ -1,7 +1,6 @@
 import os
 import os.path as op
 import numpy as np
-import json
 
 import mne
 import matplotlib.pyplot as plt
@@ -16,6 +15,22 @@ from params import TEMPLATE as template
 from params import ATLAS as aseg
 from params import ALPHA as alpha
 from params import EVENT as event
+from params import LEFT_HANDED_SUBJECTS as lh_sub
+from params import FREQUENCIES as freqs
+from params import BANDS as bands
+
+freqs = np.array([0] + list(freqs))  # add evoked
+
+
+def swarm(x, bins):  # plot helper function
+    counts = np.ones((bins.size))
+    y = np.zeros((len(x)))
+    for i, this_x in enumerate(x):
+        idx = np.where(this_x < bins)[0][0] - 1
+        y[i] = counts[idx] // 2 if counts[idx] % 2 else -counts[idx] // 2
+        counts[idx] += 1
+    return y
+
 
 source_dir = op.join(data_dir, 'derivatives',
                      f'pca_{event.lower()}_classifier')
@@ -35,46 +50,63 @@ with np.load(op.join(source_dir, 'imgs.npz')) as imgs:
     imgs = {k: v for k, v in imgs.items()}
 
 
-trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
+template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 # get plotting information
-ch_positions = dict()  # positions in template space
-anat_labels = dict()  # labels in individual space
-anat_scores = dict()  # scores per label
-colors = dict()  # the color for each label
-electrode_scores = dict()  # scores per electrode
+subject = list()
+electrode_name = list()  # name of the electrode shaft
+contact_number = list()  # number of contact
+ch_position = list()  # positions in template space
+anat_labels = list()  # labels in individual space
+contact_score = list()  # scores per electrode
+significant = list()  # alpha = 0.01 significant, uncorrected
+
+colors = dict()  # stores colors from all subjects
 for sub in subjects:
+    # get labels from individual subject anatomy
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
+    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
+    montage.apply_trans(trans)
+    labels, colors2 = mne.get_montage_volume_labels(
+        montage, f'sub-{sub}', subjects_dir=subjects_dir,
+        aseg=aseg, dist=1)  # use colors here
+    colors.update(colors2)
+    # get positions from template-warped anatomy
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_template-{template}_task-{task}_info.fif'))
     montage = mne.channels.make_dig_montage(
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
         coord_frame='head')
-    montage.apply_trans(trans)
-    labels, colors2 = mne.get_montage_volume_labels(
-        montage, f'sub-{sub}', subjects_dir=subjects_dir,
-        aseg=aseg)
-    colors.update(colors2)
+    montage.apply_trans(template_trans)
     ch_pos = montage.get_positions()['ch_pos']
     for ch_data in imgs:  # bit of a hack to match subject IDs
         sub2, ch = [phrase.split('-')[1] for phrase in
                     op.basename(ch_data).split('_')[0:2]]
         if int(sub2) == sub:
+            subject.append(sub)
             ch2 = {ch2.replace(' ', ''): ch2 for ch2 in info.ch_names}[ch]
+            electrode_name.append(''.join([letter for letter in ch2 if
+                                           not letter.isdigit()]).rstrip())
+            contact_number.append(''.join([letter for letter in ch2 if
+                                           letter.isdigit()]).rstrip())
+            ch_position.append(ch_pos[ch2])
+            anat_labels.append(labels[ch2])
             score = float(scores[f'sub-{sub}_ch-{ch}'])
-            ch_positions[f'sub-{sub}_ch-{ch}'] = ch_pos[ch2]
-            anat_labels[f'sub-{sub}_ch-{ch}'] = labels[ch2]
-            for label in labels[ch2]:
-                if label in anat_scores:
-                    anat_scores[label].append(score)
-                else:
-                    anat_scores[label] = [score]
-            elec_name = f'sub-{sub}_ch-' + ''.join(
-                [letter for letter in ch2 if
-                 not letter.isdigit()]).rstrip()
-            if elec_name in electrode_scores:
-                electrode_scores[elec_name].append(score)
-            else:
-                electrode_scores[elec_name] = [score]
+            contact_score.append(score)
+            n_epochs = int(scores[f'sub-{sub}_n_epochs'])
+            significant.append(not stats.binom.cdf(
+                n_epochs * score, n_epochs, 0.5) < 1 - alpha)
+
+
+data_dict = dict(sub=subject, elec_name=electrode_name,
+                 number=contact_number, ch_pos=ch_position,
+                 labels=anat_labels, score=contact_score,
+                 sig=significant)  # holds all data
 
 
 # Figure 1: Individual implant plots to show sampling
@@ -116,26 +148,19 @@ fig.savefig(op.join(fig_dir, 'coverage.png'), dpi=300)
 # Figure 2: histogram of classification accuracies with
 # binomial null distribution of the number of epochs
 # get the number of epochs for each
-dist = dict(sig=list(), not_sig=list())
-for ch_data in imgs:
-    sub, ch = [phrase.split('-')[1] for phrase in
-               op.basename(ch_data).split('_')[0:2]]
-    n_epochs = int(scores[f'sub-{sub}_n_epochs'])
-    score = float(scores[f'sub-{sub}_ch-{ch}'])
-    if stats.binom.cdf(n_epochs * score, n_epochs, 0.5) < 1 - alpha:
-        dist['not_sig'].append(score)
-    else:
-        dist['sig'].append(score)
-
 
 binsize = 0.01
 bins = np.linspace(binsize, 1, int(1 / binsize)) - binsize / 2
 fig, ax = plt.subplots()
-ax.hist(dist['not_sig'], bins=bins, alpha=0.5, color='r',
+sig = [score for score, is_sig in
+       zip(data_dict['score'], data_dict['sig']) if is_sig]
+not_sig = [score for score, is_sig in
+           zip(data_dict['score'], data_dict['sig']) if not is_sig]
+ax.hist(not_sig, bins=bins, alpha=0.5, color='b',
         density=True, label='not signficant')
-ax.hist(dist['sig'], bins=bins, alpha=0.5, color='b',
+ax.hist(sig, bins=bins, alpha=0.5, color='r',
         density=True, label='significant')
-dist_mean = np.mean(dist['sig'] + dist['not_sig'])
+dist_mean = np.mean(sig + not_sig)
 ax.plot([dist_mean, dist_mean], [0, 25], color='black')
 ax.hist(stats.binom.rvs(len(imgs), 0.5, size=10000) / len(imgs), bins=bins,
         color='gray', alpha=0.5, density=True, label='null')
@@ -148,38 +173,22 @@ fig.savefig(op.join(fig_dir, 'score_hist.png'), dpi=300)
 
 # Figure 3: distribution of classification accuracies across
 # subjects compared to CSP.
-dist = {str(sub): dict(sig=list(), not_sig=list()) for sub in subjects}
-for ch_data in imgs:
-    sub, ch = [phrase.split('-')[1] for phrase in
-               op.basename(ch_data).split('_')[0:2]]
-    n_epochs = int(scores[f'sub-{sub}_n_epochs'])
-    score = float(scores[f'sub-{sub}_ch-{ch}'])
-    if stats.binom.cdf(n_epochs * score, n_epochs, 0.5) < 1 - alpha:
-        dist[sub]['not_sig'].append(score)
-    else:
-        dist[sub]['sig'].append(score)
-
-
-def swarm(x, bins):
-    counts = np.ones((bins.size))
-    y = np.zeros((len(x)))
-    for i, this_x in enumerate(x):
-        idx = np.where(this_x < bins)[0][0] - 1
-        y[i] = counts[idx] // 2 if counts[idx] % 2 else -counts[idx] // 2
-        counts[idx] += 1
-    return y
-
 
 binsize = 0.005
 bins = np.linspace(0, 1 - binsize, int(1 / binsize))
-for sub in dist:
+for sub in subjects:
     fig, ax = plt.subplots()
-    ax.violinplot(dist[sub]['sig'] + dist[sub]['not_sig'], [0],
-                  vert=False, showextrema=False)
-    y = swarm(dist[sub]['not_sig'], bins=bins) / 50
-    ax.scatter(dist[sub]['not_sig'], y, color='b', label='not signficant')
-    y = swarm(dist[sub]['sig'], bins=bins) / 50
-    ax.scatter(dist[sub]['sig'], y, color='r', label='significant')
+    sig = [score for score, sub2, is_sig in
+           zip(data_dict['score'], data_dict['sub'],
+               data_dict['sig']) if sub == sub2 and is_sig]
+    not_sig = [score for score, sub2, is_sig in
+               zip(data_dict['score'], data_dict['sub'],
+                   data_dict['sig']) if sub == sub2 and not is_sig]
+    ax.violinplot(sig + not_sig, [0], vert=False, showextrema=False)
+    y = swarm(not_sig, bins=bins) / 50
+    ax.scatter(not_sig, y, color='b', label='not signficant')
+    y = swarm(sig, bins=bins) / 50
+    ax.scatter(sig, y, color='r', label='significant')
     ax.set_xlabel('Test Accuracy')
     ax.set_ylabel('Density')
     ax.legend()
@@ -190,24 +199,18 @@ for sub in dist:
     fig.savefig(op.join(fig_dir, f'sub-{sub}_score_hist.png'), dpi=300)
 
 # Figure 4: Plots of electrodes with high classification accuracies
-# based on their time-frequency characteristics.
 
-#   Part 1: all electrodes over 0.75 classification, colored by score.
-
-# plot electrodes with high accuracies
 brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
                     subjects_dir=subjects_dir, units='m')
 brain = mne.viz.Brain(template, **brain_kwargs)
 
 cmap = plt.get_cmap('jet')
-for ch_data in imgs:
-    sub, ch = [phrase.split('-')[1] for phrase in
-               op.basename(ch_data).split('_')[0:2]]
-    score = scores[f'sub-{sub}_ch-{ch}']
-    if score > 0.75:
-        x, y, z = ch_positions[f'sub-{sub}_ch-{ch}']
+for pos, is_sig, score in zip(data_dict['ch_pos'],
+                              data_dict['sig'],
+                              data_dict['score']):
+    if is_sig:
         brain._renderer.sphere(
-            center=(x, y, z), color=cmap(score)[:3],
+            center=tuple(pos), color=cmap(score)[:3],
             scale=0.005)
 
 fig, axes = plt.subplots(1, 3, figsize=(8, 4))
@@ -244,7 +247,119 @@ ax.set_yticklabels([0, 0.25, 0.5, 0.75, 1])
 fig.tight_layout()
 fig.savefig(op.join(fig_dir, 'colorbar.png'))
 
-# Figure 4: Best contacts
+# Figure 5: Accuracy by label region of interest
+
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
+labels = np.unique([
+    label for labels in data_dict['labels'] for label in labels
+    if not any([kw in label.lower() for kw in ignore_keywords])])
+label_scores = {label: [score for score, labels in zip(
+    data_dict['score'], data_dict['labels']) if label in labels]
+    for label in labels}
+labels = sorted(labels, key=lambda label: np.mean(label_scores[label]))
+
+fig, ax = plt.subplots(figsize=(8, 12), facecolor='black')
+fig.suptitle('Classification Accuracies by Label', color='w')
+
+for idx, label in enumerate(labels):
+    rh_scores = [score for score, labels, sub in zip(
+        data_dict['score'], data_dict['labels'], data_dict['sub'])
+        if sub not in lh_sub and label in labels]
+    ax.scatter(rh_scores, [idx] * len(rh_scores),
+               color=colors[label])
+    lh_scores = [score for score, labels, sub in zip(
+        data_dict['score'], data_dict['labels'], data_dict['sub'])
+        if sub in lh_sub and label in labels]
+    ax.scatter(lh_scores, [idx] * len(lh_scores),
+               color=colors[label], marker='^')
+
+
+ax.set_yticks(range(len(label_scores)))
+ax.set_yticklabels(labels)
+for tick, label in zip(ax.get_yticklabels(), labels):
+    tick.set_color(colors[label])
+
+
+for tick in ax.get_xticklabels():
+    tick.set_color('w')
+
+
+ax.set_xlabel('Linear SVM Accuracy', color='w')
+ax.set_ylabel('Anatomical Label', color='w')
+
+# make legend
+ax.text(0.75, 2, 'Subject used right hand', va='center')
+ax.scatter([0.95], [2], color='black')
+ax.text(0.75, 1, 'Subject used left hand', va='center')
+ax.scatter([0.95], [1], marker='^', color='black')
+ax.plot([0.74, 0.74, 0.96, 0.96, 0.74], [0.4, 2.6, 2.6, 0.4, 0.4],
+        color='black')
+
+fig.tight_layout()
+fig.savefig(op.join(fig_dir, 'label_accuracies.png'),
+            facecolor=fig.get_facecolor(), dpi=300)
+
+# Figure 7b: Categorization of spectral features
+
+fig, ax = plt.subplots(figsize=(6, 5))
+fig.suptitle('Frequency Band Divisions')
+
+image = np.zeros((freqs.size, 2))  # divide time into two
+counter = 1
+for band in bands:
+    fmin, fmax = bands[band]
+    for idx in (0, 1):
+        image[(freqs >= fmin) & (freqs < fmax), idx] = counter
+        counter += 1
+
+
+ax.imshow(image[::-1], aspect='auto', cmap='tab20',
+          vmin=1, vmax=20)
+ax.set_xlabel('Time (s)')
+ax.set_xticks([-0.5, 0.5, 1.5])
+ax.set_xticklabels([-0.5, 0, 0.5])
+ax.set_ylabel('Frequency (Hz)')
+ax.set_yticks(range(len(freqs)))
+ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
+                    enumerate(freqs[::-1].round(
+                    ).astype(int))], fontsize=8)
+
+fig.tight_layout()
+fig.savefig(op.join(fig_dir, 'frequency_division.png'), dpi=300)
+
+# Figure 9: Significant Correlations by Band
+
+sig_cor = dict()  # signficant correlations by subject
+for sub in subjects:
+    n_epochs = int(scores[f'sub-{sub}_n_epochs'])
+    t = stats.t(n_epochs - 2).interval(1 - alpha)[1]
+    x = t**2 / (n_epochs - 2)
+    r = np.sqrt(x / (1 - x))
+    sig_cor[sub] = r
+
+
+band_cors = list()  # correlations by band
+for name, img in imgs.items():
+    contact_band_cors = dict(before_pos=list(), before_neg=list(),
+                             after_pos=list(), after_neg=list())
+    sub, ch = [phrase.split('-')[1] for phrase in
+               op.basename(name).split('_')[0:2]]
+    sub = int(sub)
+    for band_name, (fmin, fmax) in bands.items():
+        freq_bool = (freqs >= fmin) & (freqs < fmax)
+        if img[freq_bool, :img.shape[1] // 2].max() > sig_cor[sub]:
+            contact_band_cors['before_pos'].append(band_name)
+        if img[freq_bool, :img.shape[1] // 2].min() < -sig_cor[sub]:
+            contact_band_cors['before_neg'].append(band_name)
+        if img[freq_bool, img.shape[1] // 2:].max() > sig_cor[sub]:
+            contact_band_cors['after_pos'].append(band_name)
+        if img[freq_bool, img.shape[1] // 2:].min() < -sig_cor[sub]:
+            contact_band_cors['after_neg'].append(band_name)
+    band_cors.append(contact_band_cors)
+
+fig, ax = plt.subplots(len(bands), 3)
+
+# Figure 8: Best contacts
 
 best_contacts = sorted(
     {k: v for k, v in scores.items() if 'n_epochs' not in k},
@@ -289,27 +404,7 @@ brain.show_view(azimuth=60, elevation=100, distance=.3)
 axes[0].imshow(brain.screenshot())
 
 
-# Figure X: white matter vs gray matter
 
-wm = np.concatenate([anat_scores[label] for label in anat_scores
-                     if 'White-Matter' in label])
-gm = np.concatenate([
-    anat_scores[label] for label in anat_dict if
-    all([kw not in label for kw in ('White-Matter', 'WM', 'Unknown')])])
-p = stats.ttest_ind(wm, gm)[1]
-fig, ax = plt.subplots()
-fig.suptitle('White Matter-Grey Matter Classifications, p={:.3f}'.format(p))
-vdict = ax.violinplot([wm, gm], [0, 1], showextrema=False)
-x = swarm(wm, bins=bins) / 50
-ax.scatter(x, wm, color='b', s=1)
-vdict['bodies'][0].set_facecolor('b')
-x = swarm(gm, bins=bins) / 50
-ax.scatter(1 + x, gm, color='r', s=1)
-vdict['bodies'][1].set_facecolor('r')
-ax.set_xticks([0, 1])
-ax.set_xticklabels(['White Matter', 'Grey Matter'])
-ax.set_ylabel('Linear SVM Accuracy')
-fig.savefig(op.join(fig_dir, 'wm_vs_gm.png'), dpi=300)
 
 
 # TO DO:

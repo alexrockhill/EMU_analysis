@@ -22,7 +22,7 @@ from params import BASELINE_EVENT as bl_event
 from params import EVENT as event
 
 subjects_dir = op.join(bids_root, 'derivatives')
-fig_dir = op.join(data_dir, 'derivatives', 'decoding_figs')
+fig_dir = op.join(data_dir, 'derivatives', 'decoding_plots')
 
 if not op.isdir(fig_dir):
     os.makedirs(fig_dir)

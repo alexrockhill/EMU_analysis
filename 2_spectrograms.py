@@ -9,21 +9,29 @@ from params import DATA_DIR as data_dir
 from params import BIDS_ROOT as bids_root
 from params import SUBJECTS as subjects
 from params import TASK as task
+from params import FREQUENCIES as freqs
+from params import EVENTS as event_dict
 
-fig_dir = op.join(data_dir, 'derivatives', 'spectrograms')
 
-if not op.isdir(fig_dir):
-    os.makedirs(fig_dir)
+spec_data_dir = op.join(data_dir, 'derivatives', 'spectrograms')
+plot_dir = op.join(data_dir, 'derivatives', 'spectrogram_plots')
+subjects_dir = op.join(bids_root, 'derivatives')
+
+for this_dir in (data_dir, plot_dir):
+    if not op.isdir(this_dir):
+        os.makedirs(this_dir)
+
 
 for sub in subjects:
-    sub = str(sub)
-    os.environ['SUBJECT'] = f'sub-{sub}'
-    os.environ['SUBJECTS_DIR'] = op.join(bids_root, 'derivatives')
-    path = mne_bids.BIDSPath(root=bids_root, subject=sub, task=task)
+    path = mne_bids.BIDSPath(root=bids_root, subject=str(sub), task=task)
     raw = mne_bids.read_raw_bids(path)
     raw.pick_types(seeg=True)  # no stim, other channels
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
+    raw.drop_channels([ch for ch in raw.ch_names if ch not in info.ch_names])
+    raw.info = info
     events, event_id = mne.events_from_annotations(raw)
-    event_id.pop('ISI Onset')
     # crop first to lessen amount of data, then load
     raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
              tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
@@ -31,23 +39,26 @@ for sub in subjects:
     raw.set_eeg_reference('average')
 
     # plot evoked
-    for event, (tmin, tmax) in {'Fixation': (-1, 0), 'Go Cue': (0, 1),
-                                'Response': (-0.5, 0.499)}.items():
+    for name, (event, tmin, tmax) in event_dict.items():
         epochs = mne.Epochs(raw, events, event_id[event], preload=True,
                             tmin=tmin, tmax=tmax, detrend=1, baseline=None)
-        event = event.replace(' ', '')
         fig = epochs.average().plot(show=False)
-        fig.savefig(op.join(fig_dir, f'sub-{sub}_event-{event}_evoked.png'))
+        fig.savefig(op.join(plot_dir, f'sub-{sub}_event-{name}_evoked.png'))
         plt.close(fig)
-        fig = epochs.plot_psd(fmax=250)
-        fig.savefig(op.join(fig_dir, f'sub-{sub}_event-{event}_psd.png'))
+        fig = epochs.plot_psd(fmax=250, show=False)
+        fig.savefig(op.join(plot_dir, f'sub-{sub}_event-{name}_psd.png'))
         plt.close(fig)
 
     # compute power, do manually for each channel to speed things up
-    freqs = np.concatenate(
-        [np.linspace(1, 10, 10),
-         np.logspace(np.log(11), np.log(250), 40, base=np.e)])
     sfreq = raw.info['sfreq']
+
+    info = mne.create_info(['DC'], data_dict['sfreq'], 'seeg')
+    for e in (bl_event, event):
+        epochs = mne.EpochsArray(data_dict[e][:, 0:1], info)
+        epochs.filter(l_freq=None, h_freq=80)
+        data_dict[e][:, 0:1] = epochs._data
+    info = mne.create_info(list(data_dict['freqs'].astype(str)),
+                           data_dict['sfreq'], 'seeg')
 
     for i, ch in enumerate(raw.ch_names):
         print(str(np.round(100 * i / len(raw.ch_names), 2)) + '% done', ch)
