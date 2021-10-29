@@ -1,16 +1,21 @@
 import os
 import os.path as op
 import nibabel as nib
+import pandas as pd
+
 import mne
 import mne_bids
+
+from params import DATA_DIR as data_dir
 from params import BIDS_ROOT as bids_root
 from params import SUBJECTS as subjects
 from params import TASK as task
 from params import TEMPLATE as template
+from params import ATLAS as aseg
 
 subjects_dir = op.join(bids_root, 'derivatives')
 path = mne_bids.BIDSPath(root=bids_root, task=task)
-
+out_dir = op.join(data_dir, 'derivatives')
 
 # align CT, takes ~15 minutes per subject, no user input
 for sub in subjects:
@@ -90,15 +95,26 @@ for sub in subjects:
         raw.info)
 
 
-# plot final result
+# save positions and labels and plot final result
+subject = list()
+electrode_name = list()
+contact_number = list()
+ch_position = list()
+anat_label = list()
 for sub in subjects:
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
-        f'sub-{sub}_task-{task}_info.fif'))
+        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     brain = mne.viz.Brain(f'sub-{sub}', subjects_dir=subjects_dir,
                           cortex='low_contrast', alpha=0.2, background='white')
     brain.add_sensors(info, trans)
+    # label anatomical location of contacts
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
+    montage.apply_trans(trans)
+    labels = mne.get_montage_volume_labels(  # use at the end
+        montage, f'sub-{sub}', subjects_dir=subjects_dir, aseg=aseg, dist=1)[0]
     # plot warped
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
@@ -106,3 +122,22 @@ for sub in subjects:
     brain = mne.viz.Brain(template, subjects_dir=subjects_dir,
                           cortex='low_contrast', alpha=0.2, background='white')
     brain.add_sensors(info, template_trans)
+    # get positions in template space
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
+    montage.apply_trans(template_trans)
+    ch_pos = montage.get_positions()['ch_pos']
+    for ch in ch_pos:
+        subject.append(sub)
+        electrode_name.append(''.join([letter for letter in ch if
+                                       not letter.isdigit()]).rstrip())
+        contact_number.append(''.join([letter for letter in ch if
+                                       letter.isdigit()]).rstrip())
+        ch_position.append(ch_pos[ch])
+        anat_label.append(labels[ch])
+
+
+pd.DataFrame(dict(sub=subject, elec_name=electrode_name, number=contact_number,
+                  ch_pos=ch_position, label=anat_label)).to_csv(
+    op.join(out_dir, 'elec_contacts_info.tsv'), sep='\t', index=False)

@@ -1,6 +1,7 @@
 import os
 import os.path as op
 import numpy as np
+import pandas as pd
 
 import mne
 import matplotlib.pyplot as plt
@@ -21,7 +22,6 @@ from params import BANDS as bands
 
 freqs = np.array([0] + list(freqs))  # add evoked
 
-
 def swarm(x, bins):  # plot helper function
     counts = np.ones((bins.size))
     y = np.zeros((len(x)))
@@ -32,82 +32,42 @@ def swarm(x, bins):  # plot helper function
     return y
 
 
-source_dir = op.join(data_dir, 'derivatives',
-                     f'pca_{event.lower()}_classifier')
 fig_dir = op.join(data_dir, 'derivatives', 'plots')
-
-subjects_dir = op.join(bids_root, 'derivatives')
 
 if not op.isdir(fig_dir):
     os.makedirs(fig_dir)
 
 
-with np.load(op.join(source_dir, 'scores.npz')) as scores:
-    scores = {k: v for k, v in scores.items()}
-
-
-with np.load(op.join(source_dir, 'imgs.npz')) as imgs:
-    imgs = {k: v for k, v in imgs.items()}
-
-
-template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 # get plotting information
-subject = list()
-electrode_name = list()  # name of the electrode shaft
-contact_number = list()  # number of contact
-ch_position = list()  # positions in template space
-anat_labels = list()  # labels in individual space
-contact_score = list()  # scores per electrode
+subjects_dir = op.join(bids_root, 'derivatives')
+colors = mne._freesurfer.read_freesurfer_lut()[1]
+template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
+ch_pos = pd.read_csv(op.join(data_dir, 'derivatives', 'elec_contacts_info.tsv'),
+                     sep='\t')
+
+# get svm information
+source_dir = op.join(data_dir, 'derivatives', 'pca_svm_classifier')
+scores = pd.read_csv(op.join(source_dir, 'scores.tsv'), sep='\t')
+
+with np.load(op.join(source_dir, 'n_epochs.npz')) as n_epochs:
+    n_epochs = {k: v for k, v in n_epochs.items()}
+
+
+with np.load(op.join(source_dir, 'event_images.npz')) as images:
+    images = {k: v for k, v in images.items()}
+
+
+with np.load(op.join(source_dir, 'null_images.npz')) as null_images:
+    null_images = {k: v for k, v in null_images.items()}
+
+
+# EDIT THIS
 significant = list()  # alpha = 0.01 significant, uncorrected
-
-colors = dict()  # stores colors from all subjects
-for sub in subjects:
-    # get labels from individual subject anatomy
-    info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
-        f'sub-{sub}_task-{task}_info.fif'))
-    montage = mne.channels.make_dig_montage(
-        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
-        coord_frame='head')
-    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
-    montage.apply_trans(trans)
-    labels, colors2 = mne.get_montage_volume_labels(
-        montage, f'sub-{sub}', subjects_dir=subjects_dir,
-        aseg=aseg, dist=1)  # use colors here
-    colors.update(colors2)
-    # get positions from template-warped anatomy
-    info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
-        f'sub-{sub}_template-{template}_task-{task}_info.fif'))
-    montage = mne.channels.make_dig_montage(
-        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
-        coord_frame='head')
-    montage.apply_trans(template_trans)
-    ch_pos = montage.get_positions()['ch_pos']
-    for ch_data in imgs:  # bit of a hack to match subject IDs
-        sub2, ch = [phrase.split('-')[1] for phrase in
-                    op.basename(ch_data).split('_')[0:2]]
-        if int(sub2) == sub:
-            subject.append(sub)
-            ch2 = {ch2.replace(' ', ''): ch2 for ch2 in info.ch_names}[ch]
-            electrode_name.append(''.join([letter for letter in ch2 if
-                                           not letter.isdigit()]).rstrip())
-            contact_number.append(''.join([letter for letter in ch2 if
-                                           letter.isdigit()]).rstrip())
-            ch_position.append(ch_pos[ch2])
-            anat_labels.append(labels[ch2])
-            score = float(scores[f'sub-{sub}_ch-{ch}'])
-            contact_score.append(score)
-            n_epochs = int(scores[f'sub-{sub}_n_epochs'])
-            significant.append(not stats.binom.cdf(
-                n_epochs * score, n_epochs, 0.5) < 1 - alpha)
+significant.append(not stats.binom.cdf(
+    n_epochs * score, n_epochs, 0.5) < 1 - alpha)
 
 
-data_dict = dict(sub=subject, elec_name=electrode_name,
-                 number=contact_number, ch_pos=ch_position,
-                 labels=anat_labels, score=contact_score,
-                 sig=significant)  # holds all data
-
+# Plots
 
 # Figure 1: Individual implant plots to show sampling
 fig, axes = plt.subplots(len(subjects), 3, figsize=(4, 12))

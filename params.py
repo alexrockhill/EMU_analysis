@@ -7,7 +7,7 @@ TASK = 'SlowFast'
 TEMPLATE = 'cvs_avg35_inMNI152'
 N_COMPONENTS = 50
 EVENTS = dict(baseline=('Fixation', -1, 0),
-              null=('Fixation', -2, -1),
+              null=('Fixation', -1.99, -1),
               event=('Response', -0.5, 0.499),
               go_event=('Go Cue', 0, 1))
 ATLAS = 'aparc+aseg'
