@@ -2,7 +2,7 @@ import os
 import os.path as op
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm
+import pandas as pd
 
 from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
@@ -49,6 +49,7 @@ for this_dir in (data_dir, plot_dir, out_dir, svm_plot_dir):
     if not op.isdir(this_dir):
         os.makedirs(this_dir)
 
+
 # table of info for each contact
 subject = list()
 electrode_name = list()  # name of the electrode shaft
@@ -73,7 +74,6 @@ for sub in subjects:
              tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
     raw.load_data()
     raw.set_eeg_reference('average')
-
     # plot evoked
     for name, (event, tmin, tmax) in event_dict.items():
         epochs = mne.Epochs(raw, events, event_id[event], preload=True,
@@ -84,16 +84,14 @@ for sub in subjects:
         fig = epochs.plot_psd(fmax=250, show=False)
         fig.savefig(op.join(plot_dir, f'sub-{sub}_event-{name}_psd.png'))
         plt.close(fig)
-
     # use filtered raw for evoked
     raw_filtered = raw.copy().filter(l_freq=0.1, h_freq=40)
-
     # compute power, do manually for each channel to speed things up
     sfreq = raw.info['sfreq']
     for i, ch in enumerate(raw.ch_names):
         subject.append(sub)
         elec_name = ''.join([letter for letter in ch if
-                              not letter.isdigit()]).rstrip()
+                             not letter.isdigit()]).rstrip()
         number = ''.join([letter for letter in ch if
                           letter.isdigit()]).rstrip()
         electrode_name.append(elec_name)
@@ -139,8 +137,9 @@ for sub in subjects:
             X = np.concatenate([tfr_data[bl_event]['data'],
                                 tfr_data[event]['data']], axis=0)
             X = X.reshape(X.shape[0], -1).astype('float32')  # flatten features
-            y = np.concatenate([np.repeat(0, tfr_data[event]['data'].shape[0]),
-                                np.repeat(1, tfr_data[bl_event]['data'].shape[0])])
+            y = np.concatenate(
+                [np.repeat(0, tfr_data[event]['data'].shape[0]),
+                 np.repeat(1, tfr_data[bl_event]['data'].shape[0])])
             X_train, X_test, y_train, y_test = \
                 train_test_split(X, y, test_size=.2, random_state=99)
             pca = PCA(n_components=n_components, svd_solver='randomized',
@@ -157,9 +156,11 @@ for sub in subjects:
             else:
                 n_epochs[str(sub)] = y_test.size
             eigenvectors = pca.components_.reshape(
-                (n_components, len(tfr_data[event]['freqs']), tfr_data[event]['times'].size))
-            image = np.sum(classifier.coef_[0][:, np.newaxis, np.newaxis] * eigenvectors,
-                           axis=0)
+                (n_components, len(tfr_data[event]['freqs']),
+                 tfr_data[event]['times'].size))
+            image = np.sum(
+                classifier.coef_[0][:, np.newaxis, np.newaxis] * eigenvectors,
+                axis=0)
             images[event][f'sub-{sub}_ch-{elec_name}{number}'] = image
             # diagnostic plots
             out_fname = f'sub-{sub}_ch-{elec_name}{number}_{bl_event}-{event}'
@@ -182,26 +183,32 @@ for sub in subjects:
             fp = np.where(np.logical_and(pred != y_test, y_test == 1))[0]
             tn = np.where(np.logical_and(pred == y_test, y_test == 0))[0]
             fn = np.where(np.logical_and(pred != y_test, y_test == 0))[0]
-            plot_image(
-                fig, axes[0, 0], np.median(tfr_data[event]['data'][tp], axis=0),
-                tfr_data[event]['freqs'], tfr_data[event]['times'],
-                vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
-            axes[0, 0].set_title(f'True {event_dict[event][0].title()} ({len(tp)})')
-            plot_image(
-                fig, axes[0, 1], np.median(tfr_data[event]['data'][fp], axis=0),
-                tfr_data[event]['freqs'], tfr_data[event]['times'],
-                vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
-            axes[0, 1].set_title(f'False {event_dict[event][0].title()} ({len(fp)})')
-            plot_image(
-                fig, axes[1, 1], np.median(tfr_data[bl_event]['data'][tn], axis=0),
-                tfr_data[bl_event]['freqs'], tfr_data[bl_event]['times'],
-                vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
-            axes[1, 1].set_title(f'True {event_dict[bl_event][0].title()} ({len(tn)})')
-            plot_image(
-                fig, axes[1, 0], np.median(tfr_data[bl_event]['data'][fn], axis=0),
-                tfr_data[bl_event]['freqs'], tfr_data[bl_event]['times'],
-                vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
-            axes[1, 0].set_title(f'False {event_dict[bl_event][0].title()} ({len(fn)})')
+            plot_image(fig, axes[0, 0],
+                       np.median(tfr_data[event]['data'][tp], axis=0),
+                       tfr_data[event]['freqs'], tfr_data[event]['times'],
+                       vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
+            axes[0, 0].set_title(
+                f'True {event_dict[event][0].title()} ({len(tp)})')
+            plot_image(fig, axes[0, 1],
+                       np.median(tfr_data[event]['data'][fp], axis=0),
+                       tfr_data[event]['freqs'], tfr_data[event]['times'],
+                       vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
+            axes[0, 1].set_title(
+                f'False {event_dict[event][0].title()} ({len(fp)})')
+            plot_image(fig, axes[1, 1],
+                       np.median(tfr_data[bl_event]['data'][tn], axis=0),
+                       tfr_data[bl_event]['freqs'],
+                       tfr_data[bl_event]['times'],
+                       vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
+            axes[1, 1].set_title(
+                f'True {event_dict[bl_event][0].title()} ({len(tn)})')
+            plot_image(fig, axes[1, 0],
+                       np.median(tfr_data[bl_event]['data'][fn], axis=0),
+                       tfr_data[bl_event]['freqs'],
+                       tfr_data[bl_event]['times'],
+                       vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
+            axes[1, 0].set_title(
+                f'False {event_dict[bl_event][0].title()} ({len(fn)})')
             fig.tight_layout()
             fig.savefig(op.join(svm_plot_dir, out_fname + '_comparison.png'))
             plt.close(fig)
@@ -225,18 +232,21 @@ for sub in subjects:
                         plot_image(fig, ax, tfr_data[event]['data'][i],
                                    tfr_data[event]['freqs'],
                                    tfr_data[event]['times'],
-                                   vmin=-5, vmax=5, cmap='RdYlBu_r', cbar=False)
+                                   vmin=-5, vmax=5, cmap='RdYlBu_r',
+                                   cbar=False)
                     else:
                         plot_image(fig, ax, tfr_data[bl_event]['data'][i],
                                    tfr_data[bl_event]['freqs'],
                                    tfr_data[bl_event]['times'],
-                                   vmin=-5, vmax=5, cmap='RdYlBu_r', cbar=False)
+                                   vmin=-5, vmax=5, cmap='RdYlBu_r',
+                                   cbar=False)
                 for ax in axes.flatten():
                     ax.axis('off')
                 name_str = name.replace(' ', '_').lower()
                 fig.tight_layout()
-                fig.savefig(op.join(svm_plot_dir, out_fname + f'_{name_str}.png'),
-                            dpi=300)
+                fig.savefig(
+                    op.join(svm_plot_dir, out_fname + f'_{name_str}.png'),
+                    dpi=300)
                 plt.close(fig)
 
 
@@ -252,12 +262,12 @@ np.savez_compressed(op.join(out_dir, 'null_images.npz'), **images['null'])
 # plot img over all channels, weighted
 feature_map /= len(score_data)
 fig, ax = plt.subplots()
-fig.suptitle(f'Baseline-{event_dict['event'][0]} PCA+Linear SVM\n'
-             'Classification Feature Importances Weighted')
+fig.suptitle('Baseline-{} PCA+Linear SVM\n'
+             'Classification Feature Importances Weighted'.format(
+                 event_dict['event'][0]))
 plot_image(fig, ax, feature_map,
            tfr_data['event']['freqs'], tfr_data['event']['times'],
            vmin=feature_map.min(), vmax=feature_map.max())
-fig.savefig(op.join(out_dir, f'baseline-{event_dict['event'][0].lower()}'
-                    '_features.png').replace(' ', '_'), dpi=300)
+fig.savefig(op.join(out_dir, 'baseline-{}_features.png').format(
+    event_dict['event'][0].lower()).replace(' ', '_'), dpi=300)
 plt.close(fig)
-

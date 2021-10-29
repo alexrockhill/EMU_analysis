@@ -18,7 +18,6 @@ from params import BIDS_ROOT as bids_root
 from params import DATA_DIR as data_dir
 from params import SUBJECTS as subjects
 from params import TASK as task
-from params import EVENTS as event_dict
 
 # decoding-specific parameters
 freqs = np.logspace(np.log(8), np.log(250), 50, base=np.e)
