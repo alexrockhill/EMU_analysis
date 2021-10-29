@@ -62,13 +62,13 @@ feature_map = None
 for sub in subjects:
     path = mne_bids.BIDSPath(root=bids_root, subject=str(sub), task=task)
     raw = mne_bids.read_raw_bids(path)
-    raw.pick_types(seeg=True)  # no stim, other channels
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
     raw.drop_channels([ch for ch in raw.ch_names if ch not in info.ch_names])
     raw.info = info
     events, event_id = mne.events_from_annotations(raw)
+    raw.pick_types(seeg=True)  # no stim, other channels
     # crop first to lessen amount of data, then load
     raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
              tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
@@ -109,7 +109,7 @@ for sub in subjects:
                                   verbose=False)
         # use time from beginning of the first event to end of the last event
         full_tfr = mne.Epochs(raw_tfr, events, event_id['Fixation'],
-                              preload=True, tmin=-2, tmax=2, baseline=None,
+                              preload=True, tmin=-2.5, tmax=2, baseline=None,
                               verbose=False)
         tfr_data = dict()
         for name, (event, tmin, tmax) in event_dict.items():

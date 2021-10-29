@@ -64,8 +64,9 @@ for sub in subjects:
             fmin, fmax, n_jobs=1, fir_design='firwin',
             skip_by_annotation='edge', verbose=False)
         bl_epochs = mne.Epochs(raw_filter, events, event_id['Fixation'],
-                               detrend=1, tmin=-2 - f_buffer, tmax=f_buffer,
-                               baseline=None, preload=True, verbose=False)
+                               detrend=1, baseline=None, preload=True,
+                               tmin=-2.5 - f_buffer, tmax=-0.5 - f_buffer,
+                               verbose=False)
         # extra 0.001 to match number of samples
         epochs = mne.Epochs(
             raw_filter, events, event_id['Response'], detrend=1,
@@ -95,7 +96,7 @@ for sub in subjects:
         mne.create_info(['freq'], raw.info['sfreq']), tf_scores[np.newaxis, :],
         windows, freqs, 1)
     chance = np.mean(y)  # set chance level to white in the plot
-    fig = av_tfr.plot([0], vmin=chance, cmap=plt.cm.Reds)[0]
+    fig = av_tfr.plot([0], vmin=chance, cmap=plt.cm.Reds, show=False)[0]
     fig.suptitle('Fixation-Response Decoding Scores', fontsize=24)
     ax = fig.gca()
     ax.set_xticks([0, 0.5, 1, 1.5, 2])
