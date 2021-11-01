@@ -42,8 +42,8 @@ if not op.isdir(fig_dir):
 subjects_dir = op.join(bids_root, 'derivatives')
 colors = mne._freesurfer.read_freesurfer_lut()[1]
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
-ch_pos = pd.read_csv(op.join(data_dir, 'derivatives', 'elec_contacts_info.tsv'),
-                     sep='\t')
+ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
+                             'elec_contacts_info.tsv'), sep='\t')
 
 # get svm information
 source_dir = op.join(data_dir, 'derivatives', 'pca_svm_classifier')
@@ -69,7 +69,42 @@ significant.append(not stats.binom.cdf(
 
 # Plots
 
-# Figure 1: Individual implant plots to show sampling
+# Figure 1: Task figure
+# TODO: change this to one linear figure scaled appropriately
+fig, ax = plt.subplots(figsize=(6, 2))
+fig.suptitle('Forced Two-Choice\nTask Design')
+ax.axis('off')
+# fixation 700 + blank 700 + go 1200 + iti 4000 = 6600
+ax.set_xlim([-0.02, 6.62])
+ax.set_ylim([-0.02, 6.62])
+# fixation
+ax.fill([0, 1.2, 1.2, 0, 0], [3, 3, 2.2, 2.2, 3],
+        color=(0.529, 0.612, 0.604), zorder=1)
+ax.plot([0, 1.2, 1.2, 0, 0], [3, 3, 2.2, 2.2, 3],
+        color='black', zorder=1)
+ax.fill([0.55, 0.65, 0.65, 0.55, 0.55], [2.65, 2.65, 2.55, 2.55, 2.65],
+        color=(0.996, 0.996, 0.996))
+ax.text(0.6, 3.45, 'Fixation\n300-700 ms\njittered',
+        va='center', ha='center', fontsize=8)
+# blank
+ax.fill([1, 2.2, 2.2, 1, 1], [2.4, 2.4, 1.6, 1.6, 2.4],
+        color=(0.529, 0.612, 0.604), zorder=2)
+ax.plot([1, 2.2, 2.2, 1, 1], [2.4, 2.4, 1.6, 1.6, 2.4],
+        color='black', zorder=2)
+ax.text(1.9, 2.9, 'Blank\n300-\n700 ms\njittered',
+        va='center', ha='center', fontsize=8)
+# cue
+ax.fill([2, 3.2, 3.2, 2, 2], [1.8, 1.8, 1.0, 1.0, 1.8],
+        color=(0.529, 0.612, 0.604), zorder=3)
+ax.plot([2, 3.2, 3.2, 2, 2], [1.8, 1.8, 1.0, 1.0, 1.8],
+        color='black', zorder=3)
+ax.fill([2.5, 2.7, 2.7, 2.5], [1.4, 1.56, 1.24, 1.4],
+        color=(0.996, 0.996, 0.996), zorder=3)
+ax.text(2.9, 2.9, 'Cue\n1.4-4 x\npractice RT',
+        va='center', ha='center', fontsize=8)
+
+
+# Figure 2: Individual implant plots to show sampling
 fig, axes = plt.subplots(len(subjects), 3, figsize=(4, 12))
 for ax in axes.flatten():
     for direction in ('left', 'right', 'top', 'bottom'):
