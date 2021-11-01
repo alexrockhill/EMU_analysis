@@ -35,13 +35,13 @@ if not op.isdir(plot_dir):
 for sub in subjects:
     path = mne_bids.BIDSPath(root=bids_root, subject=str(sub), task=task)
     raw = mne_bids.read_raw_bids(path)
-    raw.pick_types(seeg=True)
     events, event_id = mne.events_from_annotations(raw)
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
     raw.drop_channels([ch for ch in raw.ch_names if ch not in info.ch_names])
     raw.info = info
+    raw.pick_types(seeg=True)
     # crop first to lessen amount of data, then load
     raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
              tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
@@ -65,7 +65,7 @@ for sub in subjects:
             skip_by_annotation='edge', verbose=False)
         bl_epochs = mne.Epochs(raw_filter, events, event_id['Fixation'],
                                detrend=1, baseline=None, preload=True,
-                               tmin=-2.5 - f_buffer, tmax=-0.5 - f_buffer,
+                               tmin=-2.5 - f_buffer, tmax=-0.5 + f_buffer,
                                verbose=False)
         # extra 0.001 to match number of samples
         epochs = mne.Epochs(
@@ -105,6 +105,7 @@ for sub in subjects:
     ax.set_yticks(freqs[::4].round())
     ax.set_yticklabels(freqs[::4].round().astype(int), fontsize=20)
     ax.set_ylabel('Frequency (Hz)', fontsize=32)
+    fig.tight_layout()
     fig.savefig(op.join(plot_dir, f'sub-{sub}_csp.png'))
     np.savez_compressed(op.join(plot_dir, f'sub-{sub}_csp_tf_scores.npz'),
                         tf_scores)
