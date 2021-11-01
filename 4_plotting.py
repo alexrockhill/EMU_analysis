@@ -22,6 +22,7 @@ from params import BANDS as bands
 
 freqs = np.array([0] + list(freqs))  # add evoked
 
+
 def swarm(x, bins):  # plot helper function
     counts = np.ones((bins.size))
     y = np.zeros((len(x)))
@@ -42,8 +43,8 @@ if not op.isdir(fig_dir):
 subjects_dir = op.join(bids_root, 'derivatives')
 colors = mne._freesurfer.read_freesurfer_lut()[1]
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
-ch_pos = pd.read_csv(op.join(data_dir, 'derivatives', 'elec_contacts_info.tsv'),
-                     sep='\t')
+ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
+                             'elec_contacts_info.tsv'), sep='\t')
 
 # get svm information
 source_dir = op.join(data_dir, 'derivatives', 'pca_svm_classifier')
@@ -59,12 +60,6 @@ with np.load(op.join(source_dir, 'event_images.npz')) as images:
 
 with np.load(op.join(source_dir, 'null_images.npz')) as null_images:
     null_images = {k: v for k, v in null_images.items()}
-
-
-# EDIT THIS
-significant = list()  # alpha = 0.01 significant, uncorrected
-significant.append(not stats.binom.cdf(
-    n_epochs * score, n_epochs, 0.5) < 1 - alpha)
 
 
 # Plots
@@ -108,6 +103,11 @@ fig.savefig(op.join(fig_dir, 'coverage.png'), dpi=300)
 # Figure 2: histogram of classification accuracies with
 # binomial null distribution of the number of epochs
 # get the number of epochs for each
+
+# EDIT THIS
+significant = list()  # alpha = 0.01 significant, uncorrected
+significant.append(not stats.binom.cdf(
+    n_epochs * score, n_epochs, 0.5) < 1 - alpha)
 
 binsize = 0.01
 bins = np.linspace(binsize, 1, int(1 / binsize)) - binsize / 2
