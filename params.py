@@ -1,5 +1,6 @@
 import numpy as np
 
+RAW_DATA_DIR = '/home/alex/SwannLab/EMU_data'
 BIDS_ROOT = '/home/alex/SwannLab/EMU_data_BIDS'
 DATA_DIR = '/home/alex/SwannLab/EMU_analysis'
 SUBJECTS = [1, 2, 5, 6, 9, 10, 11, 12]

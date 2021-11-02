@@ -15,7 +15,7 @@ from params import TASK as task
 from params import TEMPLATE as template
 from params import ATLAS as aseg
 from params import ALPHA as alpha
-from params import EVENT as event
+from params import EVENTS as event_dict
 from params import LEFT_HANDED_SUBJECTS as lh_sub
 from params import FREQUENCIES as freqs
 from params import BANDS as bands
@@ -65,38 +65,68 @@ with np.load(op.join(source_dir, 'null_images.npz')) as null_images:
 # Plots
 
 # Figure 1: Task figure
-# TODO: change this to one linear figure scaled appropriately
+sr = 800 / 1200  # screen ratio
 fig, ax = plt.subplots(figsize=(6, 2))
-fig.suptitle('Forced Two-Choice\nTask Design')
+fig.suptitle('Forced Two-Choice Task Design')
 ax.axis('off')
 # fixation 700 + blank 700 + go 1200 + iti 4000 = 6600
-ax.set_xlim([-0.02, 6.62])
-ax.set_ylim([-0.02, 6.62])
+ax.axis([-0.02, 6.62, -1, 1])
+# main experimental design
+ax.plot([0, 0, 0, 6.6, 6.6, 6.6], [0.2, -0.2, 0, 0, -0.2, 0.2], color='black')
 # fixation
-ax.fill([0, 1.2, 1.2, 0, 0], [3, 3, 2.2, 2.2, 3],
-        color=(0.529, 0.612, 0.604), zorder=1)
-ax.plot([0, 1.2, 1.2, 0, 0], [3, 3, 2.2, 2.2, 3],
-        color='black', zorder=1)
-ax.fill([0.55, 0.65, 0.65, 0.55, 0.55], [2.65, 2.65, 2.55, 2.55, 2.65],
+for t in (0.3, 0.4, 0.5, 0.6, 0.7):
+    ax.plot([t, t], [-0.2, 0.2], color=(0.5, 0.5, 0.5))
+ax.plot([0, 0.35, 0.7], [0.2, 0.35, 0.2], color=(0.5, 0.5, 0.5))  # zoom
+ax.fill([0, 0.7, 0.7, 0, 0], 0.37 + np.array([0, 0, 0.7 * sr, 0.7 * sr, 0]),
+        color=(0, 0, 0))
+ax.fill([0.31, 0.39, 0.39, 0.31, 0.31],
+        0.37 + sr * np.array([0.31, 0.31, 0.39, 0.39, 0.31]),
         color=(0.996, 0.996, 0.996))
-ax.text(0.6, 3.45, 'Fixation\n300-700 ms\njittered',
-        va='center', ha='center', fontsize=8)
+ax.text(0.35, 0.55 + 0.7 * sr, 'Fixation\n300-700 ms jittered',
+        va='center', ha='center', fontsize=8, color=(0.5, 0.5, 0.5))
 # blank
-ax.fill([1, 2.2, 2.2, 1, 1], [2.4, 2.4, 1.6, 1.6, 2.4],
-        color=(0.529, 0.612, 0.604), zorder=2)
-ax.plot([1, 2.2, 2.2, 1, 1], [2.4, 2.4, 1.6, 1.6, 2.4],
-        color='black', zorder=2)
-ax.text(1.9, 2.9, 'Blank\n300-\n700 ms\njittered',
-        va='center', ha='center', fontsize=8)
+for t in (0.3, 0.4, 0.5, 0.6, 0.7):
+    ax.plot(0.7 + np.array([t, t]), [-0.2, 0.2], color=(0.7, 0.7, 0.7))
+ax.plot([0.7, 1.05, 1.4], [-0.2, -0.35, -0.2], color=(0.7, 0.7, 0.7))  # zoom
+ax.fill(0.7 + np.array([0, 0.7, 0.7, 0, 0]),
+        -0.37 - np.array([0, 0, 0.7 * sr, 0.7 * sr, 0]), color=(0, 0, 0))
+ax.text(1.05, -0.58 - 0.7 * sr, 'Blank\n300-700 ms jittered',
+        va='center', ha='center', fontsize=8, color=(0.7, 0.7, 0.7))
 # cue
-ax.fill([2, 3.2, 3.2, 2, 2], [1.8, 1.8, 1.0, 1.0, 1.8],
-        color=(0.529, 0.612, 0.604), zorder=3)
-ax.plot([2, 3.2, 3.2, 2, 2], [1.8, 1.8, 1.0, 1.0, 1.8],
-        color='black', zorder=3)
-ax.fill([2.5, 2.7, 2.7, 2.5], [1.4, 1.56, 1.24, 1.4],
-        color=(0.996, 0.996, 0.996), zorder=3)
-ax.text(2.9, 2.9, 'Cue\n1.4-4 x\npractice RT',
-        va='center', ha='center', fontsize=8)
+ax.plot(1.4 + np.array([0.45, 0.45]), [-0.2, 0.2], color=(0.4, 0.4, 0.4))
+ax.plot(1.4 + np.array([1.2, 1.2]), [-0.2, 0.2], color=(0.4, 0.4, 0.4))
+ax.plot([1.4, 2.05, 2.6], [0.2, 0.5, 0.2], color=(0.4, 0.4, 0.4))  # zoom
+ax.fill(1.75 + np.array([0, 0.7, 0.7, 0, 0]),
+        0.53 + np.array([0, 0, 0.7 * sr, 0.7 * sr, 0]), color=(0, 0, 0))
+ax.fill(1.75 + np.array([0.28, 0.42, 0.42, 0.28]),
+        0.53 + sr * np.array([0.35, 0.47, 0.23, 0.35]),
+        color=(0.996, 0.996, 0.996))
+ax.text(2.5, 0.75, 'Cue\n1.4 or 4 x\npractice RT',
+        va='center', ha='left', fontsize=8, color=(0.4, 0.4, 0.4))
+# inter-trial interval
+ax.plot([2.6, 4.6, 6.6], [0.2, 0.5, 0.2], color=(0.3, 0.3, 0.3))  # zoom
+ax.fill(4.25 + np.array([0, 0.7, 0.7, 0, 0]),
+        0.53 + np.array([0, 0, 0.7 * sr, 0.7 * sr, 0]), color=(0, 0, 0))
+ax.text(5, 0.75, 'Inter-trial inveral\n4000 ms',
+        va='center', ha='left', fontsize=8, color=(0.3, 0.3, 0.3))
+# analysis markers
+rt = 0.324
+ax.plot(1.4 + np.array([rt, rt]), [-0.2, 0.2], color='red')
+ax.fill_between([1.4 + rt - 0.5, 1.4 + rt + 0.5], -0.2, 0.2,
+                color='red', alpha=0.25)
+ax.plot([1.32, 1.8, 1.4 + rt + 0.5], [-0.27, -0.38, -0.22],
+        color='red', alpha=0.25)
+ax.text(2.2, -0.55, 'Response Epoch\n-500 to 500 ms',
+        va='center', ha='center', fontsize=8, color='red', alpha=0.5)
+ax.fill_between([5.1, 6.1], -0.2, 0.2, color='blue', alpha=0.25)
+ax.plot([5.13, 5.7, 6.07], [-0.22, -0.38, -0.22], color='blue', alpha=0.25)
+ax.text(5.7, -0.55, 'Baseline Epoch\n-1500 to -500 ms',
+        va='center', ha='center', fontsize=8, color='blue', alpha=0.5)
+ax.fill_between([4.1, 5.1], -0.2, 0.2, color='green', alpha=0.25)
+ax.plot([4.13, 4.5, 5.07], [-0.22, -0.68, -0.22], color='green', alpha=0.25)
+ax.text(4.5, -0.85, 'Null Epoch\n-2500 to -1500 ms',
+        va='center', ha='center', fontsize=8, color='green', alpha=0.5)
+fig.savefig(op.join(fig_dir, 'task_design.png'), dpi=300)
 
 
 # Figure 2: Individual implant plots to show sampling
@@ -135,7 +165,7 @@ fig.subplots_adjust(left=0.07, right=1, top=0.97, bottom=0,
 fig.savefig(op.join(fig_dir, 'coverage.png'), dpi=300)
 
 
-# Figure 2: histogram of classification accuracies with
+# Figure 3: histogram of classification accuracies with
 # binomial null distribution of the number of epochs
 # get the number of epochs for each
 
