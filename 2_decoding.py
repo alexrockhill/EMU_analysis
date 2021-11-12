@@ -1,7 +1,6 @@
 import os
 import os.path as op
 import numpy as np
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 from datetime import datetime
 
@@ -26,10 +25,10 @@ windows = np.linspace(0, 2, 11)
 windows = (windows[1:] + windows[:-1]) / 2  # take mean
 
 subjects_dir = op.join(bids_root, 'derivatives')
-plot_dir = op.join(data_dir, 'derivatives', 'decoding_plots')
+out_dir = op.join(data_dir, 'derivatives', 'csp_decoding')
 
-if not op.isdir(plot_dir):
-    os.makedirs(plot_dir)
+if not op.isdir(out_dir):
+    os.makedirs(out_dir)
 
 
 for sub in subjects:
@@ -92,20 +91,5 @@ for sub in subjects:
                 these_scores = np.concatenate(
                     [these_scores, scores[~np.isnan(scores)]])
             tf_scores[i, t] = these_scores[:n_splits].mean()
-    av_tfr = mne.time_frequency.AverageTFR(
-        mne.create_info(['freq'], raw.info['sfreq']), tf_scores[np.newaxis, :],
-        windows, freqs, 1)
-    chance = np.mean(y)  # set chance level to white in the plot
-    fig = av_tfr.plot([0], vmin=chance, cmap=plt.cm.Reds, show=False)[0]
-    fig.suptitle('Fixation-Response Decoding Scores', fontsize=24)
-    ax = fig.gca()
-    ax.set_xticks([0, 0.5, 1, 1.5, 2])
-    ax.set_xticklabels([-1, -0.5, 0, 0.5, 1], fontsize=24)
-    ax.set_xlabel('Time (s)', fontsize=32)
-    ax.set_yticks(freqs[::4].round())
-    ax.set_yticklabels(freqs[::4].round().astype(int), fontsize=20)
-    ax.set_ylabel('Frequency (Hz)', fontsize=32)
-    fig.tight_layout()
-    fig.savefig(op.join(plot_dir, f'sub-{sub}_csp.png'))
-    np.savez_compressed(op.join(plot_dir, f'sub-{sub}_csp_tf_scores.npz'),
+    np.savez_compressed(op.join(out_dir, f'sub-{sub}_csp_tf_scores.npz'),
                         tf_scores)
