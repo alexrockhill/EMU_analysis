@@ -29,20 +29,6 @@ for sub in subjects:
         subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
 
 
-# alternately this can be done by hand in Freeview and then saved to rCT.mgz
-'''
-import numpy as np
-from dipy.align import resample
-for sub in subjects:
-    T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
-    rCT = nib.load(op.join(subjects_dir, f'sub-{sub}', 'CT', 'rCT.mgz'))
-    CT_aligned = resample(np.array(rCT.dataobj), rCT.affine,
-                          np.array(T1.dataobj), T1.affine)
-    nib.save(CT_aligned, op.join(
-             subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
-'''
-
-
 # pick contact locations, requires user input
 for sub in subjects:
     path.update(subject=str(sub))
@@ -118,6 +104,7 @@ electrode_name = list()
 contact_number = list()
 ch_position = list()
 anat_label = list()
+template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 for sub in subjects:
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
