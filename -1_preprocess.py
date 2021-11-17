@@ -29,3 +29,5 @@ for sub in subjects:
         relative_event_name=['ISI Onset', 'Go Cue', 'Response'])
     pd_parser.save_to_bids(bids_root, edf_fname, str(sub), task=task,
                            beh=beh_fname, data_type='seeg')
+
+# Note: T1 was also manually aligned in freeview to ACPC before sharing

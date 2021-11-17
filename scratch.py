@@ -1,3 +1,12 @@
+sig_cor = dict()  # signficant correlations by subject
+for sub in subjects:
+    n_epochs = int(scores[f'sub-{sub}_n_epochs'])
+    t = stats.t(n_epochs - 2).interval(1 - alpha)[1]
+    x = t**2 / (n_epochs - 2)
+    r = np.sqrt(x / (1 - x))
+    sig_cor[sub] = r
+
+
 for sub in [5, 9, 10]:
     path.update(subject=str(sub))
     raw = mne_bids.read_raw_bids(path)

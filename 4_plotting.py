@@ -384,53 +384,69 @@ fig.savefig(op.join(fig_dir, 'label_accuracies.png'),
 
 # Figure 7b: Categorization of spectral features
 
-feature_map /= len(score_data)
-fig, ax = plt.subplots()
-fig.suptitle('Baseline-{} PCA+Linear SVM\n'
-             'Classification Feature Importances Weighted'.format(
-                 event_dict['event'][0]))
-plot_image(fig, ax, feature_map,
-           tfr_data['event']['freqs'], tfr_data['event']['times'],
-           vmin=feature_map.min(), vmax=feature_map.max())
-fig.savefig(op.join(out_dir, 'baseline-{}_features.png').format(
-    event_dict['event'][0].lower()).replace(' ', '_'), dpi=300)
-plt.close(fig)
-
-fig, (ax, ax2) = plt.subplots(1, 2, figsize=(8, 4))
-fig.suptitle('Frequency Band Divisions')
-
-image = np.zeros((freqs.size, 2))  # divide time into two
-counter = 1
-for band in bands:
-    fmin, fmax = bands[band]
-    for idx in (0, 1):
-        image[(freqs >= fmin) & (freqs < fmax), idx] = counter
-        counter += 1
+# compute null distribution thresholds
+spec_shape = images[list(images.keys())[0]].shape
+score_threshs = dict()
+image_threshs = dict()
+for sub in subjects:
+    these_scores = scores[scores['sub'] == sub]
+    score_threshs[sub] = np.quantile(these_scores['null_scores'], 1 - alpha)
+    null_dist = list()
+    for name, null_image in null_images.items():
+        sub2, ch = [phrase.split('-')[1] for phrase in
+                    name.split('_')[0:2]]
+        if sub == int(sub2):
+            null_dist.append(null_image)
+    image_threshs[sub] = np.quantile(
+        abs(np.array(null_dist)), 1 - alpha, axis=0)
 
 
-ax.imshow(image[::-1], aspect='auto', cmap='tab20',
-          vmin=1, vmax=20)
-ax.set_xlabel('Time (s)')
-ax.set_xticks([-0.5, 0.5, 1.5])
-ax.set_xticklabels([-0.5, 0, 0.5])
-ax.set_ylabel('Frequency (Hz)')
-ax.set_yticks(range(len(freqs)))
-ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
-                    enumerate(freqs[::-1].round(
-                    ).astype(int))], fontsize=8)
+# shape of the spectrograms
+feature_maps = np.zeros((3,) + spec_shape)
+for sub, elec_name, number, score in zip(
+        scores['sub'], scores['elec_name'], scores['number'],
+        scores['event_scores']):
+    if score > score_threshs[sub]:
+        image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
+        feature_maps[0] += abs(image) > image_threshs[sub]  # count
+        feature_maps[1] += image > image_threshs[sub]
+        feature_maps[2] += abs(image)
+        feature_maps[3] += (abs(image) > image_threshs[sub]) * score
+
+
+# normalize
+feature_maps[1] /= feature_maps[0]  # scale by count
+feature_maps[3] /= feature_maps[0]  # scale by count
+feature_maps[0] /= feature_maps[0].max()
+feature_maps[2] /= feature_maps[2].max()
+
+fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+axes = axes.flatten()
+for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
+    ax.invert_yaxis()
+    ax.set_xlabel('Time (s)')
+    ax.set_xticks(np.linspace(0, spec_shape[1], 5))
+    ax.set_xticklabels([-1, -0.5, 0, 0.5, 1])
+    ax.set_yticks(range(len(freqs))[::-1])
+    ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
+                        enumerate(np.array(freqs).round(
+                        ).astype(int))], fontsize=8)
+    c = ax.imshow(feature_map[::-1], vmin=0.5 if i == 0 else 0,
+                  vmax=1, cmap='inferno', aspect='auto')
+    fig.colorbar(c, ax=ax)
+
+
+axes[0].set_title('Average Accuracy by\nTime-Frequency')
+axes[0].set_ylabel('Frequency (Hz)')
+axes[1].set_title('Proportion of Positive\nSignificant Coefficients')
+axes[2].set_title('Relative Count of\nSignificant Coefficients')
 
 fig.tight_layout()
-fig.savefig(op.join(fig_dir, 'frequency_division.png'), dpi=300)
+fig.savefig(op.join(fig_dir, 'feature_map.png'), dpi=300)
 
 # Figure 9: Significant Correlations by Band
 
-sig_cor = dict()  # signficant correlations by subject
-for sub in subjects:
-    n_epochs = int(scores[f'sub-{sub}_n_epochs'])
-    t = stats.t(n_epochs - 2).interval(1 - alpha)[1]
-    x = t**2 / (n_epochs - 2)
-    r = np.sqrt(x / (1 - x))
-    sig_cor[sub] = r
+
 
 
 band_cors = list()  # correlations by band

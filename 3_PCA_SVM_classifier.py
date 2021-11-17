@@ -258,16 +258,3 @@ score_data = pd.DataFrame(dict(sub=subject, elec_name=electrode_name,
 score_data.to_csv(op.join(out_dir, 'scores.tsv'), sep='\t', index=False)
 np.savez_compressed(op.join(out_dir, 'event_images.npz'), **images['event'])
 np.savez_compressed(op.join(out_dir, 'null_images.npz'), **images['null'])
-
-# plot img over all channels, weighted
-feature_map /= len(score_data)
-fig, ax = plt.subplots()
-fig.suptitle('Baseline-{} PCA+Linear SVM\n'
-             'Classification Feature Importances Weighted'.format(
-                 event_dict['event'][0]))
-plot_image(fig, ax, feature_map,
-           tfr_data['event']['freqs'], tfr_data['event']['times'],
-           vmin=feature_map.min(), vmax=feature_map.max())
-fig.savefig(op.join(out_dir, 'baseline-{}_features.png').format(
-    event_dict['event'][0].lower()).replace(' ', '_'), dpi=300)
-plt.close(fig)
