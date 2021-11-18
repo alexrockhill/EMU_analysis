@@ -30,57 +30,28 @@ for sub in subjects:
         subjects_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'),
         reg_affine=reg_affine)
 
+
 # delete
-for sub in (11, 12):
+for sub in (5, 11, 12):
     T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
-    CT_orig = nib.load(op.join(subjects_dir, f'sub-{sub}', 'CT', 'CT.nii'))
-    CT_aligned = nib.load(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
+    CT_orig = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
+                               f'sub-{sub}_ct.nii.gz'))
+    CT_aligned = nib.load(op.join(subjects_dir, f'sub-{sub}',
+                                  'CT', 'CT_aligned.mgz'))
     reg_affine, _ = mne.transforms.compute_volume_registration(
         CT_orig, CT_aligned, pipeline='rigids')
     np.savez_compressed(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'),
+        subjects_dir, f'sub-{sub}', 'CT', 'reg_affine_orig.npz'),
         reg_affine=reg_affine)
     reg_affine, _ = mne.transforms.compute_volume_registration(
-        CT_aligned, T1, pipeline='rigids')
+        CT_aligned, T1, pipeline=['rigid'])
     np.savez_compressed(op.join(
         subjects_dir, f'sub-{sub}', 'CT', 'reg_affine_fix.npz'),
         reg_affine=reg_affine)
-    # TO DO: dot reg_affine with reg_affine_fix to get new reg_affine
-    # apply reg_affine_fix to channel data
-
-for sub in subjects:
-    path.update(subject=str(sub))
-    raw = mne_bids.read_raw_bids(path)
-    raw.set_montage(None)
-    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
-    T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
-    CT_orig = nib.load(op.join(subjects_dir, f'sub-{sub}', 'CT', 'CT.nii'))
-    reg_affine = np.load(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'))['reg_affine']
-    CT_aligned = mne.transforms.apply_volume_registration(
-        CT_orig, T1, reg_affine)
-    # fix tomorrow
-    info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
-        f'sub-{sub}_task-{task}_info.fif'))
-    raw.info = info
-    montage = raw.get_montage()
-    montage.apply_trans(trans)
-    reg_affine_fix = np.load(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'reg_affine_fix.npz'))['reg_affine']
-    montage.apply_trans(
-        mne.transforms.Transform('mri', 'mri', reg_affine_fix))
-    raw.set_montage(montage)
-    gui = mne.gui.locate_ieeg(raw.info, trans, CT_aligned,
-                              subject=f'sub-{sub}', subjects_dir=subjects_dir)
-    os.rename(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                      f'sub-{sub}_task-{task}_info.fif'),
-              op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                      f'sub-{sub}_task-{task}_info2.fif'))
-    mne.io.write_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                              f'sub-{sub}_task-{task}_info.fif'),
-                      raw.info)
+    CT_aligned2 = mne.transforms.apply_volume_registration(
+        CT_aligned, T1, reg_affine)
+    nib.save(CT_aligned2, op.join(
+        subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned2.mgz'))
 
 
 # pick contact locations, requires user input

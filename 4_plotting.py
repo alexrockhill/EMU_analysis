@@ -15,7 +15,6 @@ from params import TASK as task
 from params import TEMPLATE as template
 from params import ATLAS as aseg
 from params import ALPHA as alpha
-from params import EVENTS as event_dict
 from params import LEFT_HANDED_SUBJECTS as lh_sub
 from params import FREQUENCIES as freqs
 from params import BANDS as bands
@@ -382,7 +381,7 @@ fig.subplots_adjust(top=0.95, bottom=0.07)
 fig.savefig(op.join(fig_dir, 'label_accuracies.png'),
             facecolor=fig.get_facecolor(), dpi=300)
 
-# Figure 7b: Categorization of spectral features
+# Figure 6: Feature maps
 
 # compute null distribution thresholds
 spec_shape = images[list(images.keys())[0]].shape
@@ -402,7 +401,7 @@ for sub in subjects:
 
 
 # shape of the spectrograms
-feature_maps = np.zeros((3,) + spec_shape)
+feature_maps = np.zeros((4,) + spec_shape)
 for sub, elec_name, number, score in zip(
         scores['sub'], scores['elec_name'], scores['number'],
         scores['event_scores']):
@@ -420,7 +419,7 @@ feature_maps[3] /= feature_maps[0]  # scale by count
 feature_maps[0] /= feature_maps[0].max()
 feature_maps[2] /= feature_maps[2].max()
 
-fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 axes = axes.flatten()
 for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
     ax.invert_yaxis()
@@ -431,44 +430,40 @@ for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
     ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
                         enumerate(np.array(freqs).round(
                         ).astype(int))], fontsize=8)
-    c = ax.imshow(feature_map[::-1], vmin=0.5 if i == 0 else 0,
-                  vmax=1, cmap='inferno', aspect='auto')
+    c = ax.imshow(feature_map[::-1], vmin=0.5 if i == 3 else 0,
+                  vmax=1, cmap='viridis', aspect='auto')
     fig.colorbar(c, ax=ax)
 
 
-axes[0].set_title('Average Accuracy by\nTime-Frequency')
+axes[0].set_title('Relative Abundance of\nSignificant Coefficients')
 axes[0].set_ylabel('Frequency (Hz)')
+fig.text(0.04, 0.95, 'a', fontsize=24)
 axes[1].set_title('Proportion of Positive\nSignificant Coefficients')
-axes[2].set_title('Relative Count of\nSignificant Coefficients')
+fig.text(0.52, 0.95, 'b', fontsize=24)
+axes[2].set_title('Average Relative Magnitude\nof Coefficients')
+fig.text(0.04, 0.47, 'c', fontsize=24)
+axes[2].set_ylabel('Frequency (Hz)')
+axes[3].set_title('Average Accuracy by\nTime-Frequency')
+fig.text(0.52, 0.47, 'd', fontsize=24)
 
 fig.tight_layout()
 fig.savefig(op.join(fig_dir, 'feature_map.png'), dpi=300)
 
-# Figure 9: Significant Correlations by Band
+# Figure 7: Anatomical Locations of Significant Correlations Areas
 
+# YOU ARE HERE
+# TO DO:
+# - add plot to figure 4 for average classification accuracy by ROI
+# - define time-frequency ROIs and plot their locations
+#   - beta decrease
+#   - delta increase
+#   - evoked decrease
+#   - beta rebound increase high + low
+#   - gamma increase post
+# - plot best 20 contacts wheel
+# - plot best electrodes in detail
+# Done!
 
-
-
-band_cors = list()  # correlations by band
-for name, img in imgs.items():
-    contact_band_cors = dict(before_pos=list(), before_neg=list(),
-                             after_pos=list(), after_neg=list())
-    sub, ch = [phrase.split('-')[1] for phrase in
-               op.basename(name).split('_')[0:2]]
-    sub = int(sub)
-    for band_name, (fmin, fmax) in bands.items():
-        freq_bool = (freqs >= fmin) & (freqs < fmax)
-        if img[freq_bool, :img.shape[1] // 2].max() > sig_cor[sub]:
-            contact_band_cors['before_pos'].append(band_name)
-        if img[freq_bool, :img.shape[1] // 2].min() < -sig_cor[sub]:
-            contact_band_cors['before_neg'].append(band_name)
-        if img[freq_bool, img.shape[1] // 2:].max() > sig_cor[sub]:
-            contact_band_cors['after_pos'].append(band_name)
-        if img[freq_bool, img.shape[1] // 2:].min() < -sig_cor[sub]:
-            contact_band_cors['after_neg'].append(band_name)
-    band_cors.append(contact_band_cors)
-
-fig, ax = plt.subplots(len(bands), 3)
 
 # Figure 8: Best contacts
 
@@ -513,13 +508,3 @@ brain.add_volume_labels(aseg=aseg, labels=list(labels))
 brain.add_sensors(info, picks=contacts)  # you are here, need info
 brain.show_view(azimuth=60, elevation=100, distance=.3)
 axes[0].imshow(brain.screenshot())
-
-
-
-
-
-# TO DO:
-# plot rois by accuracy (darker color)
-# best electrode labels wheel
-# top ten contacts labels plot wheel
-# laterality?
