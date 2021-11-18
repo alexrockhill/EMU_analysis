@@ -17,7 +17,6 @@ from params import ATLAS as aseg
 from params import ALPHA as alpha
 from params import LEFT_HANDED_SUBJECTS as lh_sub
 from params import FREQUENCIES as freqs
-from params import BANDS as bands
 
 freqs = np.array([0] + list(freqs))  # add evoked
 
@@ -280,7 +279,7 @@ brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
                     subjects_dir=subjects_dir, units='m')
 brain = mne.viz.Brain(template, **brain_kwargs)
 
-cmap = plt.get_cmap('jet')
+cmap = plt.get_cmap('viridis')
 for sub in subjects:
     these_scores = scores[scores['sub'] == sub]
     these_pos = ch_pos[ch_pos['sub'] == sub]
@@ -292,8 +291,8 @@ for sub in subjects:
                                    scale=0.005)
 
 
-fig, axes = plt.subplots(1, 4, figsize=(8, 4))
-for ax in axes[:3]:
+fig, axes = plt.subplots(2, 4, figsize=(8, 8))
+for ax in axes[0, :3] + axes[1]:
     ax.axis('off')
     ax.invert_yaxis()
 
@@ -323,6 +322,30 @@ pos = ax.get_position()
 ax.set_position((pos.x0, 0.25, 0.05, 0.5))
 fig.tight_layout()
 ax.set_position((pos.x0, 0.25, 0.025, 0.5))
+
+# plot accuracy by labels
+brain = mne.viz.Brain(template, **brain_kwargs)
+labels = dict()
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
+for sub in subjects:
+    these_scores = scores[scores['sub'] == sub]
+    these_pos = ch_pos[ch_pos['sub'] == sub]
+    for score, these_labels in zip(these_scores['event_scores'],
+                                   these_pos['label']):
+        if isinstance(these_labels, str):
+            for label in these_labels.split(','):
+                if any([kw in label.lower() for kw in ignore_keywords]):
+                    continue
+                if label in labels:
+                    labels[label].append(score)
+                else:
+                    labels[label] = [score]
+
+label_names = list(labels.keys())
+colors = [cmap(np.mean(scores)) for scores in label_names]
+brain.add_volume_labels(aseg=aseg, labels=label_names,
+                        colors=colors, alpha=0.5, smooth=0.9)
+
 
 fig.savefig(op.join(fig_dir, 'high_accuracy.png'), dpi=300)
 
