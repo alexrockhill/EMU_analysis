@@ -19,7 +19,6 @@ path = mne_bids.BIDSPath(root=bids_root, task=task)
 out_dir = op.join(data_dir, 'derivatives')
 
 # align CT, takes ~15 minutes per subject, no user input
-# Note: subjects 5, 11 and 12 had to be aligned manually
 for sub in subjects:
     T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
     CT_orig = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
@@ -31,28 +30,30 @@ for sub in subjects:
         reg_affine=reg_affine)
 
 
-# delete
-for sub in (5, 11, 12):
-    T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
-    CT_orig = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
-                               f'sub-{sub}_ct.nii.gz'))
-    CT_aligned = nib.load(op.join(subjects_dir, f'sub-{sub}',
-                                  'CT', 'CT_aligned.mgz'))
-    reg_affine, _ = mne.transforms.compute_volume_registration(
-        CT_orig, CT_aligned, pipeline='rigids')
-    np.savez_compressed(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'reg_affine_orig.npz'),
-        reg_affine=reg_affine)
-    reg_affine, _ = mne.transforms.compute_volume_registration(
-        CT_aligned, T1, pipeline=['rigid'])
-    np.savez_compressed(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'reg_affine_fix.npz'),
-        reg_affine=reg_affine)
-    CT_aligned2 = mne.transforms.apply_volume_registration(
-        CT_aligned, T1, reg_affine)
-    nib.save(CT_aligned2, op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned2.mgz'))
-
+# a few subjects didn't work and this was used to align (11 and 12)
+'''
+import ants
+T1 = ants.image_read(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
+CT_orig = ants.image_read(op.join(bids_root, f'sub-{sub}', 'anat',
+                                  f'sub-{sub}_ct.nii.gz'))
+reg_affine_trans = ants.registration(
+    fixed=T1, moving=CT_orig, type_of_transform='Rigid')
+CT_aligned = ants.apply_transforms(
+    fixed=T1, moving=CT_orig, transformlist=reg_affine_trans['fwdtransforms'],
+    interpolator='linear')
+ants.image_write(CT_aligned, op.join(subjects_dir, f'sub-{sub}',
+                                     'CT', 'CT_aligned.mgz'))
+T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
+CT_orig = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
+                           f'sub-{sub}_ct.nii.gz'))
+CT_aligned = nib.load(op.join(subjects_dir, f'sub-{sub}',
+                              'CT', 'CT_aligned.mgz'))
+reg_affine, _ = mne.transforms.compute_volume_registration(
+    CT_orig, CT_aligned, pipeline='rigids')
+np.savez_compressed(op.join(
+    subjects_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'),
+    reg_affine=reg_affine)
+'''
 
 # pick contact locations, requires user input
 for sub in subjects:

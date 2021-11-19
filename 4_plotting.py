@@ -39,6 +39,8 @@ if not op.isdir(fig_dir):
 
 # get plotting information
 subjects_dir = op.join(bids_root, 'derivatives')
+brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
+                    subjects_dir=subjects_dir, units='m')
 colors = mne._freesurfer.read_freesurfer_lut()[1]
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
@@ -60,6 +62,9 @@ with np.load(op.join(source_dir, 'n_epochs.npz')) as n_epochs:
 
 with np.load(op.join(source_dir, 'event_images.npz')) as images:
     images = {k: v for k, v in images.items()}
+
+
+spec_shape = images[list(images.keys())[0]].shape
 
 
 with np.load(op.join(source_dir, 'null_images.npz')) as null_images:
@@ -152,8 +157,7 @@ for i, sub in enumerate(subjects):
     info = mne.io.read_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
                                     f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
-    brain = mne.viz.Brain(f'sub-{sub}', subjects_dir=subjects_dir,
-                          cortex='low_contrast', alpha=0.2, background='white')
+    brain = mne.viz.Brain(f'sub-{sub}', **brain_kwargs)
     brain.add_sensors(info, trans)
     brain.show_view(azimuth=60, elevation=100, distance=325)
     axes[i, 0].imshow(brain.screenshot())
@@ -165,10 +169,15 @@ for i, sub in enumerate(subjects):
 
 
 fig.subplots_adjust(left=0.03, right=1, top=0.95, bottom=0.03,
-                    wspace=-0.6, hspace=0)
+                    wspace=-0.3, hspace=0)
 for ax in axes[::2].flatten():
     pos = ax.get_position()
-    ax.set_position((pos.x0 - 0.05, pos.y0, pos.width, pos.height))
+    ax.set_position((pos.x0 - 0.02, pos.y0, pos.width, pos.height))
+
+
+for ax in axes[1::2].flatten():
+    pos = ax.get_position()
+    ax.set_position((pos.x0 + 0.02, pos.y0, pos.width, pos.height))
 
 
 fig.savefig(op.join(fig_dir, 'coverage.png'), dpi=300)
@@ -275,8 +284,17 @@ fig.savefig(op.join(fig_dir, f'svm_csp_comparison.png'), dpi=300)
 
 # Figure 4: Plots of electrodes with high classification accuracies
 
-brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
-                    subjects_dir=subjects_dir, units='m')
+fig = plt.figure(figsize=(8, 4))
+gs = fig.add_gridspec(2, 4)
+axes = np.array([[fig.add_subplot(gs[i, j]) for j in range(3)]
+                 for i in range(2)])
+cax = fig.add_subplot(gs[:, 3])
+for ax in axes.flatten():
+    ax.axis('off')
+    ax.invert_yaxis()
+
+
+# color contacts by accuracy
 brain = mne.viz.Brain(template, **brain_kwargs)
 
 cmap = plt.get_cmap('viridis')
@@ -291,40 +309,18 @@ for sub in subjects:
                                    scale=0.005)
 
 
-fig, axes = plt.subplots(2, 4, figsize=(8, 8))
-for ax in axes[0, :3] + axes[1]:
-    ax.axis('off')
-    ax.invert_yaxis()
-
-
-axes[0].set_title('Right front')
-axes[1].set_title('Top down')
-axes[2].set_title('Left front')
+axes[0, 0].set_title('Right front')
+axes[0, 1].set_title('Top down')
+axes[0, 2].set_title('Left front')
 brain.show_view(azimuth=60, elevation=100, distance=.3)
-axes[0].imshow(brain.screenshot())
+axes[0, 0].imshow(brain.screenshot())
 brain.show_view(azimuth=90, elevation=0)
-axes[1].imshow(brain.screenshot())
+axes[0, 1].imshow(brain.screenshot())
 brain.show_view(azimuth=120, elevation=100)
-axes[2].imshow(brain.screenshot())
+axes[0, 2].imshow(brain.screenshot())
 brain.close()
 
-# colorbar
-ax = axes[3]
-gradient = np.linspace(0, 1, 256)
-gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
-ax.imshow(gradient, aspect='auto', cmap=cmap)
-ax.set_xticks([])
-ax.invert_yaxis()
-ax.yaxis.tick_right()
-ax.set_yticks(np.array([0, 0.25, 0.5, 0.75, 1]) * 256)
-ax.set_yticklabels([0, 0.25, 0.5, 0.75, 1])
-pos = ax.get_position()
-ax.set_position((pos.x0, 0.25, 0.05, 0.5))
-fig.tight_layout()
-ax.set_position((pos.x0, 0.25, 0.025, 0.5))
-
 # plot accuracy by labels
-brain = mne.viz.Brain(template, **brain_kwargs)
 labels = dict()
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
 for sub in subjects:
@@ -341,11 +337,33 @@ for sub in subjects:
                 else:
                     labels[label] = [score]
 
-label_names = list(labels.keys())
-colors = [cmap(np.mean(scores)) for scores in label_names]
-brain.add_volume_labels(aseg=aseg, labels=label_names,
-                        colors=colors, alpha=0.5, smooth=0.9)
 
+label_names = list(labels.keys())
+acc_colors = [cmap(np.mean(labels[name])) for name in label_names]
+
+brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
+brain.add_volume_labels(aseg=aseg, labels=label_names,
+                        colors=acc_colors, alpha=1, smooth=0.9)
+brain.show_view(azimuth=60, elevation=100, distance=.3)
+axes[1, 0].imshow(brain.screenshot())
+brain.show_view(azimuth=90, elevation=0)
+axes[1, 1].imshow(brain.screenshot())
+brain.show_view(azimuth=120, elevation=100)
+axes[1, 2].imshow(brain.screenshot())
+brain.close()
+
+# colorbar
+gradient = np.linspace(0, 1, 256)
+gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
+cax.imshow(gradient, aspect='auto', cmap=cmap)
+cax.set_xticks([])
+cax.invert_yaxis()
+cax.yaxis.tick_right()
+cax.set_yticks(np.array([0, 0.25, 0.5, 0.75, 1]) * 256)
+cax.set_yticklabels([0, 0.25, 0.5, 0.75, 1])
+fig.tight_layout()
+pos = cax.get_position()
+cax.set_position((pos.x0, 0.15, 0.05, 0.7))
 
 fig.savefig(op.join(fig_dir, 'high_accuracy.png'), dpi=300)
 
@@ -407,7 +425,6 @@ fig.savefig(op.join(fig_dir, 'label_accuracies.png'),
 # Figure 6: Feature maps
 
 # compute null distribution thresholds
-spec_shape = images[list(images.keys())[0]].shape
 score_threshs = dict()
 image_threshs = dict()
 for sub in subjects:
@@ -474,60 +491,89 @@ fig.savefig(op.join(fig_dir, 'feature_map.png'), dpi=300)
 
 # Figure 7: Anatomical Locations of Significant Correlations Areas
 
-# YOU ARE HERE
+
 # TO DO:
-# - add plot to figure 4 for average classification accuracy by ROI
 # - define time-frequency ROIs and plot their locations
 #   - beta decrease
 #   - delta increase
 #   - evoked decrease
 #   - beta rebound increase high + low
 #   - gamma increase post
-# - plot best 20 contacts wheel
-# - plot best electrodes in detail
+# - top three contacts -- almost done here, just finish views and labels
+#   - plot anatomy of electrode, color contacts by accuracy
+#   - spectrogram of best contact
 # Done!
 
 
 # Figure 8: Best contacts
 
-best_contacts = sorted(
-    {k: v for k, v in scores.items() if 'n_epochs' not in k},
-    key=scores.get, reverse=True)[:15]
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
+best_contact_idx = np.argsort(scores['event_scores'])[-5:][::-1]
 
-fig = plt.figure(figsize=(8, 8), facecolor='black')
-labels = {contact.replace('sub-', 'Subject ').replace('_ch-', '\nCh '):
-          [label for label in anat_labels[contact] if label != 'Unknown']
-          for contact in best_contacts}
-all_labels = [label for label_list in labels.values()
-              for label in label_list]
-best_contact_colors = {k: v for k, v in colors.items()
-                       if k in all_labels}
-mne.viz.plot_channel_labels_circle(
-    labels, best_contact_colors, fig=fig,
-    title='Contacts with the Highest Classification Accuracies')
-fig.savefig(op.join(fig_dir, 'best_contacts.png'), dpi=300)
+views = [dict(azimuth=130, elevation=30, distance=0.2),
+         dict(azimuth=0, elevation=0, distance=0.2),
+         dict(azimuth=0, elevation=0, distance=0.2),
+         dict(azimuth=0, elevation=0, distance=0.2),
+         dict(azimuth=0, elevation=0, distance=0.2)]
 
-# Figure 5: best electrode
-
-mean_scores = dict()
-for elec_name in electrode_scores:
-    mean_scores[elec_name] = np.mean(electrode_scores[elec_name])
+fig = plt.figure(figsize=(6, 12))
+gs = fig.add_gridspec(5, 3)
+axes = np.array([[fig.add_subplot(gs[i, j]) for j in range(2)]
+                 for i in range(5)])
+cax = fig.add_subplot(gs[1:, 2])
+axes[-1, 0].set_xlabel('Time (s)')
+axes[-1, 0].set_xticks(np.linspace(0, spec_shape[1], 5))
+axes[-1, 0].set_xticklabels([-1, -0.5, 0, 0.5, 1])
+for ax in axes.flatten():
+    ax.axis('off')
 
 
-best_electrodes = sorted(mean_scores, key=mean_scores.get, reverse=True)[:3]
-subs = [elec_name.split('_')[0] for elec_name in best_electrodes]
+for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
+    sub = ch_pos['sub'][idx]
+    elec_name = ch_pos['elec_name'][idx]
+    number = ch_pos['number'][idx]
+    labels = [label for label in ch_pos['label'][idx].split(',')
+              if not any([kw in label.lower() for kw in ignore_keywords])]
+    score = scores['event_scores'][idx]
+    ax.set_title(f'Subject {sub} {elec_name} {int(number)}\n'
+                 'Test Accuracy {:.2f}'.format(score))
+    info = mne.io.read_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
+                                    f'sub-{sub}_task-{task}_info.fif'))
+    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
+    elec_names = [ch for ch in info.ch_names if elec_name in ch]
+    elec_scores = scores[(scores['sub'] == sub) &
+                         (scores['elec_name'] == elec_name)]['event_scores']
+    info = info.pick_channels(elec_names)
+    ch_pos = mne.transforms.apply_trans(
+        trans, np.array([ch['loc'][:3] for ch in info['chs']]))
+    # spectrogram plot
+    ax.invert_yaxis()
+    ax.imshow(images[f'sub-{sub}_ch-{elec_name}{int(number)}'],
+              aspect='auto', vmin=-0.05, vmax=0.05, cmap='viridis')
+    ax.set_yticks(range(len(freqs))[::-1])
+    ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
+                        enumerate(np.array(freqs).round(
+                        ).astype(int))], fontsize=8)
+    # anatomy plot
+    brain = mne.viz.Brain(f'sub-{sub}', **brain_kwargs)
+    for pos, score in zip(ch_pos, elec_scores):
+        brain._renderer.sphere(pos, cmap(score)[:3], 0.005)
+    brain.add_volume_labels(aseg='aparc+aseg', labels=labels)
+    brain.show_view(focalpoint=ch_pos[len(ch_pos) // 2], **view)
+    brain.enable_depth_peeling()
+    ax2.imshow(brain.screenshot())
 
-fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+# colorbar
+gradient = np.linspace(0, 1, 256)
+gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
+cax.imshow(gradient, aspect='auto', cmap=cmap)
+cax.set_xticks([])
+cax.invert_yaxis()
+cax.yaxis.tick_right()
+cax.set_yticks(np.array([0, 0.25, 0.5, 0.75, 1]) * 256)
+cax.set_yticklabels([0, 0.25, 0.5, 0.75, 1])
+fig.tight_layout()
+pos = cax.get_position()
+cax.set_position((pos.x0, 0.15, 0.05, 0.7))
 
-contacts = [contact for contact in anat_labels if
-            best_electrodes[0] in contact]
-labels = set([label for contact in contacts
-              for label in anat_labels[contact]
-              if label != 'Unknown' and 'White-Matter' not in label])
-
-brain = mne.viz.Brain(subs[0], **brain_kwargs,
-                      title=subs[0].replace('sub-', 'Subject '))
-brain.add_volume_labels(aseg=aseg, labels=list(labels))
-brain.add_sensors(info, picks=contacts)  # you are here, need info
-brain.show_view(azimuth=60, elevation=100, distance=.3)
-axes[0].imshow(brain.screenshot())
+fig.savefig(op.join(fig_dir, 'best_electrodes.png'), dpi=300)

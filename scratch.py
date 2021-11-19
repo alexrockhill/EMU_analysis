@@ -1,3 +1,25 @@
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
+best_contact_idx = np.argsort(scores['event_scores'])[-20:][::-1]
+
+fig = plt.figure(figsize=(8, 8), facecolor='black')
+labels = {f'Subject {sub}\n{elec_name} {int(number)}':
+          [label for label in labels.split(',') if not any(
+              kw in label.lower() for kw in ignore_keywords)]
+          for sub, elec_name, number, labels in zip(
+              ch_pos['sub'][best_contact_idx],
+              ch_pos['elec_name'][best_contact_idx],
+              ch_pos['number'][best_contact_idx],
+              ch_pos['label'][best_contact_idx])}
+all_labels = [label for label_list in labels.values()
+              for label in label_list]
+best_contact_colors = {k: v / 255 for k, v in colors.items()
+                       if k in all_labels}
+mne.viz.plot_channel_labels_circle(
+    labels, best_contact_colors, fig=fig, show=False,
+    title='Contacts with the Highest Classification Accuracies')
+fig.tight_layout()
+fig.savefig(op.join(fig_dir, 'best_contacts.png'), dpi=300)
+
 BANDS = {'evoked': (0, 1), 'delta': (1, 4), 'theta': (4, 8),
          'alpha': (8, 13), 'low_beta': (13, 21),
          'high_beta': (21, 30), 'low_gamma': (30, 60),
@@ -10,6 +32,32 @@ for sub in subjects:
     x = t**2 / (n_epochs - 2)
     r = np.sqrt(x / (1 - x))
     sig_cor[sub] = r
+
+
+# Figure 5: best electrode
+
+mean_scores = dict()
+for elec_name in electrode_scores:
+    mean_scores[elec_name] = np.mean(electrode_scores[elec_name])
+
+
+best_electrodes = sorted(mean_scores, key=mean_scores.get, reverse=True)[:3]
+subs = [elec_name.split('_')[0] for elec_name in best_electrodes]
+
+fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+
+contacts = [contact for contact in anat_labels if
+            best_electrodes[0] in contact]
+labels = set([label for contact in contacts
+              for label in anat_labels[contact]
+              if label != 'Unknown' and 'White-Matter' not in label])
+
+brain = mne.viz.Brain(subs[0], **brain_kwargs,
+                      title=subs[0].replace('sub-', 'Subject '))
+brain.add_volume_labels(aseg=aseg, labels=list(labels))
+brain.add_sensors(info, picks=contacts)  # you are here, need info
+brain.show_view(azimuth=60, elevation=100, distance=.3)
+axes[0].imshow(brain.screenshot())
 
 
 for sub in [5, 9, 10]:
