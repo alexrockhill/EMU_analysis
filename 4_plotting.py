@@ -552,8 +552,6 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
     sub = ch_pos['sub'][idx]
     elec_name = ch_pos['elec_name'][idx]
     number = ch_pos['number'][idx]
-    labels = [label for label in ch_pos['label'][idx].split(',')
-              if not any([kw in label.lower() for kw in ignore_keywords])]
     score = scores['event_scores'][idx]
     ax.set_title(f'Subject {sub} {elec_name} {int(number)} '
                  'Test Accuracy {:.2f}'.format(score))
@@ -689,7 +687,8 @@ fig.savefig(op.join(fig_dir, 'feature_anatomy.png'), dpi=300)
 
 # plot connectivity wheels for beta decrease, high and low beta rebound and
 # gamma increase
-ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
+                   'white-matter', 'wm-')
 
 
 def get_labels(area, direction):
