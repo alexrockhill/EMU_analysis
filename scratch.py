@@ -1,4 +1,104 @@
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
+fig, axes = plt.subplots(len(areas), 2, figsize=(6, 12), facecolor='black')
+hashes = [ax.__hash__() for ax in axes.flatten()]
+
+for (ax, ax2), area in zip(axes, area_contacts):
+    pos_labels, neg_labels = dict(), dict()
+    for (sub, elec_name, number), prop in area_contacts[area].items():
+        pos = ch_pos[(ch_pos['sub'] == sub) &
+                     (ch_pos['elec_name'] == elec_name) &
+                     (ch_pos['number'] == number)].reset_index().loc[0]
+        labels = pos['label'].split(',')
+        labels = [label for label in labels if not
+                  any(kw in label.lower() for kw in ignore_keywords)]
+        if prop > prop_thresh:
+            pos_labels[f'Subject {sub} {elec_name}{number}'] = labels
+        if prop < -prop_thresh:
+            neg_labels[f'Subject {sub} {elec_name}{number}'] = labels
+    subplot = hashes.index(ax.__hash__()) + 1
+    label_names = set([label for labels in pos_labels.values()
+                       for label in labels])
+    if label_names:
+        mne.viz.plot_channel_labels_circle(
+            labels=pos_labels,
+            colors={name: colors[name][:3] / 255 for name in label_names},
+            fig=fig, subplot=f'{len(areas)}2{subplot}', show=False)
+    subplot = hashes.index(ax2.__hash__()) + 1
+    label_names = set([label for labels in neg_labels.values()
+                       for label in labels])
+    if label_names:
+        mne.viz.plot_channel_labels_circle(
+            labels=neg_labels,
+            colors={name: colors[name][:3] / 255 for name in label_names},
+            fig=fig, subplot=f'{len(areas)}2{subplot}', show=False)
+
+
+dark_cmap = plt.get_cmap('Purples')
+
+# proportion of area histogram
+ax = axes[idx][1]
+rects = ax.hist(area_contacts[area].values(), bins=bins)[2]
+for rect, center in zip(rects, (bins[:-1] + bins[1:]) / 2):
+    if ((sign == 1 and center >= prop_thresh) or
+            (sign == -1 and center <= -prop_thresh)):
+        rect.set_color('red')
+ax.set_ylim([0, 50])
+
+         dict(azimuth=230, elevation=40, distance=0.2)
+
+
+name_str = '\n'.join([' '.join([r'$\bf{' + word + '}$'
+                                    for word in phrase.split(' ')])
+                          for phrase in name.split(',')])
+
+with np.load(op.join(source_dir, 'n_epochs.npz')) as n_epochs:
+    n_epochs = {k: v for k, v in n_epochs.items()}
+
+
+# compute fdr correction
+null_images = images['null']
+masks = dict()
+for sub in subjects:
+    null_dist = list()
+    for name, null_image in null_images.items():
+        sub2, ch = [phrase.split('-')[1] for phrase in
+                    name.split('_')[0:2]]
+        if sub == int(sub2):
+            null_dist.append(abs(null_image))
+    null_dist = np.array(null_dist)
+    for name, image in images.items():
+        sub2, ch = [phrase.split('-')[1] for phrase in
+                    name.split('_')[0:2]]
+        if sub == int(sub2):
+            pvals = np.sum(abs(image) > null_dist, axis=0) / null_dist.shape[0]
+            masks[name] = mne.stats.fdr_correction(pvals, alpha=alpha)[0]
+
+
+np.savez_compressed(op.join(out_dir, 'event_image_masks.npz'),
+                    **images['mask'])
+
+        feature_maps[0] += abs(image) > image_threshs[sub]  # count
+        feature_maps[1] += image > image_threshs[sub]
+        feature_maps[2] += abs(image)
+        feature_maps[3] += (abs(image) > image_threshs[sub]) * score
+
+
+# compute null distribution thresholds
+score_threshs = dict()
+image_threshs = dict()
+for sub in subjects:
+    these_scores = scores[scores['sub'] == sub]
+    score_threshs[sub] = np.quantile(these_scores['null_scores'], 1 - alpha)
+    null_dist = list()
+    for name, null_image in null_images.items():
+        sub2, ch = [phrase.split('-')[1] for phrase in
+                    name.split('_')[0:2]]
+        if sub == int(sub2):
+            null_dist.append(null_image)
+    image_threshs[sub] = np.quantile(
+        abs(np.array(null_dist)), 1 - alpha, axis=0)
+
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
 best_contact_idx = np.argsort(scores['event_scores'])[-20:][::-1]
 
 fig = plt.figure(figsize=(8, 8), facecolor='black')

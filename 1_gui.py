@@ -61,11 +61,8 @@ for sub in subjects:
     raw = mne_bids.read_raw_bids(path)
     raw.set_montage(None)
     T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
-    CT_orig = nib.load(op.join(subjects_dir, f'sub-{sub}', 'CT', 'CT.nii'))
-    reg_affine = np.load(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'))['reg_affine']
-    CT_aligned = mne.transforms.apply_volume_registration(
-        CT_orig, T1, reg_affine)
+    CT_aligned = nib.load(op.join(
+        subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     gui = mne.gui.locate_ieeg(raw.info, trans, CT_aligned,
                               subject=f'sub-{sub}', subjects_dir=subjects_dir)
@@ -86,8 +83,7 @@ for sub in subjects:
     path.update(subject=str(sub))
     raw = mne_bids.read_raw_bids(path)
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
-        f'sub-{sub}_task-{task}_info.fif'))
+        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
     raw.drop_channels([ch for ch in raw.ch_names if ch not in info.ch_names])
     raw.info = info
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)

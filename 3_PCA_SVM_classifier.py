@@ -58,7 +58,6 @@ scores = dict(event=list(), null=list())  # scores per electrode
 
 images = dict(event=dict(), null=dict())  # correlation coefficient images
 n_epochs = dict()  # number of epochs per subject
-feature_map = None
 for sub in subjects:
     path = mne_bids.BIDSPath(root=bids_root, subject=str(sub), task=task)
     raw = mne_bids.read_raw_bids(path)
@@ -212,11 +211,6 @@ for sub in subjects:
             fig.tight_layout()
             fig.savefig(op.join(svm_plot_dir, out_fname + '_comparison.png'))
             plt.close(fig)
-            # add to grand features plot
-            if event == 'event':
-                weight = (score - 0.5) * 2
-                feature_map = image * weight if \
-                    feature_map is None else feature_map + image * weight
             # single random example spectrograms plot
             n_show = min([tp.size, fp.size, tn.size, fn.size])
             n_col = int(n_show ** 0.5)
