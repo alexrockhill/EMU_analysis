@@ -108,8 +108,8 @@ prop_thresh = 0.5
 areas = {'Pre-Movement Beta': (1, 25, 37, -0.4, -0.1),
          'Delta': (1, 1, 5, -0.5, 0.5),
          'Evoked Potential': (1, 0, 0, -0.5, 0.5),
-         'High Beta Rebound': (1, 27, 40, 0, 0.25),
-         'Low Beta Rebound': (1, 14, 23, 0.05, 0.25),
+         'High-Beta Rebound': (1, 27, 40, 0, 0.25),
+         'Low-Beta Rebound': (1, 14, 23, 0.05, 0.25),
          'Post-Movement Gamma': (1, 45, 160, 0.08, 0.23),
          'Pre-Movement Alpha': (0, 7, 14, -0.3, 0)}
 
@@ -609,10 +609,8 @@ fig.savefig(op.join(fig_dir, 'best_electrodes.png'), dpi=300)
 
 # Figure 8: Anatomical Locations of Significant Correlations Areas
 
-fig, axes = plt.subplots(len(areas), 5, figsize=(6, 12))
-axes[0, 2].set_title('Right front')
-axes[0, 3].set_title('Top down')
-axes[0, 4].set_title('Left front')
+fig, axes = plt.subplots(len(areas), 5, figsize=(6.5, 10))
+
 axes[-1, 0].set_xticks(np.linspace(0, spec_shape[1], 3))
 axes[-1, 0].set_xticklabels([-0.5, 0, 0.5])
 axes[-1, 0].set_xlabel('Time (s)')
@@ -646,7 +644,7 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
     ax.set_yticks([fmin_idx, fmax_idx])
     ax.set_yticklabels([int(round(freqs[fmin_idx])),
                         f'{int(round(freqs[fmax_idx]))}    '])
-    ax.set_ylabel(area, fontsize='xx-small', fontweight='bold')
+    ax.set_ylabel(area, fontsize='small', fontweight='bold')
     ax.invert_yaxis()
     # proportion of area histogram
     ax = axes[idx][1]
@@ -668,18 +666,43 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
                 center=(pos['x'], pos['y'], pos['z']),
                 color='blue' if prop > prop_thresh else 'red',
                 scale=0.005)
-    brain.show_view(azimuth=60, elevation=100, distance=0.325)
-    axes[idx, 2].imshow(brain.screenshot())
-    brain.show_view(azimuth=90, elevation=0, distance=0.36)
-    axes[idx, 3].imshow(brain.screenshot())
-    brain.show_view(azimuth=120, elevation=100, distance=0.325)
-    axes[idx, 4].imshow(brain.screenshot())
+    for view_idx, view in enumerate(
+            (dict(azimuth=60, elevation=100, distance=0.325),
+             dict(azimuth=90, elevation=0, distance=0.36),
+             dict(azimuth=120, elevation=100, distance=0.325))):
+        brain.show_view(**view)
+        image = brain.screenshot(mode='rgba')
+        image[np.all(image[:, :, :3] == 255, axis=-1), 3] = 0
+        axes[idx, view_idx + 2].imshow(image)
     brain.close()
     idx += 1
 
 
 fig.tight_layout()
-fig.subplots_adjust(hspace=0, wspace=0)
+fig.subplots_adjust(hspace=0, wspace=0, top=0.97, bottom=0.07, left=0.16)
+axes[0, 0].set_ylabel('Pre-Movement\nBeta')
+axes[2, 0].set_ylabel('Evoked\nPotential')
+axes[3, 0].set_ylabel('High-Beta\nRebound')
+axes[4, 0].set_ylabel('Low-Beta\nRebound')
+axes[5, 0].set_ylabel('Post-Movement\nGamma')
+axes[6, 0].set_ylabel('Pre-\nMovement\nAlpha')
+
+# bigger brains
+for i, axes2 in enumerate(axes[:, [2, 4]].T):
+    for ax in axes2:
+        pos = ax.get_position()
+        adjust = pos.width * 0.3
+        ax.set_position((pos.x0 - adjust / 2, pos.y0 - adjust / 2,
+                         pos.width + adjust, pos.height + adjust))
+
+
+# add view labels, has to be after
+for ax_idx, text in enumerate(('Right front', 'Top down', 'Left front')):
+    pos = axes[0, ax_idx + 2].get_position()
+    fig.text(pos.x0 + pos.width / 2, 0.98, text, ha='center',
+             fontsize='large')
+
+
 fig.savefig(op.join(fig_dir, 'feature_anatomy.png'), dpi=300)
 
 
@@ -688,50 +711,71 @@ fig.savefig(op.join(fig_dir, 'feature_anatomy.png'), dpi=300)
 # plot connectivity wheels for beta decrease, high and low beta rebound and
 # gamma increase
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
-                   'white-matter', 'wm-')
+                   'white-matter', 'wm-', 'cc_', 'cerebellum')
+
+labels = dict()
+for sub in subjects:
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
+    montage.apply_trans(trans)
+    sub_labels = mne.get_montage_volume_labels(
+        montage, f'sub-{sub}', subjects_dir=subjects_dir,
+        aseg=aseg, dist=3)[0]
+    for ch, these_labels in sub_labels.items():
+        ch = ch.replace(' ', '')
+        labels[f'sub-{sub}_ch-{ch}'] = \
+            [label for label in these_labels if not any(
+                [kw in label.lower() for kw in ignore_keywords])]
+
+
+def format_label(label):
+    return label.lower().replace('ctx-', '').replace('lh-', '').replace(
+        'rh-', '').replace('left-', '').replace('right-', '').title()
 
 
 def get_labels(area, direction):
-    labels = dict()
+    these_labels = dict()
     for (sub, elec_name, number), prop in area_contacts[area].items():
-        pos = ch_pos[(ch_pos['sub'] == sub) &
-                     (ch_pos['elec_name'] == elec_name) &
-                     (ch_pos['number'] == number)].reset_index().loc[0]
-        ch_labels = pos['label'].split(',')
-        ch_labels = [label for label in ch_labels if not
-                     any(kw in label.lower() for kw in ignore_keywords)]
+        ch_labels = labels[f'sub-{sub}_ch-{elec_name}{number}']
         if direction == 1 and prop > prop_thresh:
-            labels[f'Subject {sub} {elec_name}{number}'] = ch_labels
+            these_labels[f'Sub {sub} {elec_name}{number}'] = ch_labels
         if direction == -1 and prop < -prop_thresh:
-            labels[f'Subject {sub} {elec_name}{number}'] = ch_labels
-    label_names = set([label for labels in labels.values()
+            these_labels[f'Sub {sub} {elec_name}{number}'] = ch_labels
+    label_names = set([label for labels in these_labels.values()
                        for label in labels])
-    return labels, label_names
+    these_colors = {name: colors[name][:3] / 255 for name in label_names}
+    these_labels = {name: [format_label(label) for label in lbls]
+                    for name, lbls in these_labels.items()}
+    these_colors = {format_label(label): color for label, color in
+                    these_colors.items()}
+    return these_labels, these_colors
 
 
-fig, axes = plt.subplots(2, 2, figsize=(8, 9), facecolor='black')
+fig, axes = plt.subplots(2, 2, figsize=(8, 8), facecolor='black')
+circle_kwargs = dict(fig=fig, show=False, linewidth=1)
 
-labels, label_names = get_labels('Pre-Movement Beta', -1)
+these_labels, these_colors = get_labels('Pre-Movement Beta', -1)
 mne.viz.plot_channel_labels_circle(
-    labels=labels, fig=fig, subplot='221', show=False,
-    colors={name: colors[name][:3] / 255 for name in label_names})
-fig.text(0.05, 0.95, 'Pre-Movement Beta Decrease', ha='left', color='w')
-labels, label_names = get_labels('Low Beta Rebound', 1)
+    labels=these_labels, colors=these_colors, subplot='221', **circle_kwargs)
+fig.text(0.05, 0.925, 'Pre-Movement\nBeta Decrease', ha='left', color='w')
+these_labels, these_colors = get_labels('Low-Beta Rebound', 1)
 mne.viz.plot_channel_labels_circle(
-    labels=labels, fig=fig, subplot='222', show=False,
-    colors={name: colors[name][:3] / 255 for name in label_names})
-fig.text(0.55, 0.95, 'Low Beta Rebound', ha='left', color='w')
-labels, label_names = get_labels('High Beta Rebound', 1)
+    labels=these_labels, colors=these_colors, subplot='222', **circle_kwargs)
+fig.text(0.45, 0.9275, 'Low-Beta\nRebound', ha='left', color='w')
+these_labels, these_colors = get_labels('High-Beta Rebound', 1)
 mne.viz.plot_channel_labels_circle(
-    labels=labels, fig=fig, subplot='223', show=False,
-    colors={name: colors[name][:3] / 255 for name in label_names})
-fig.text(0.05, 0.45, 'High Beta Rebound', ha='left', color='w')
-labels, label_names = get_labels('Post-Movement Gamma', 1)
+    labels=these_labels, colors=these_colors, subplot='223', **circle_kwargs)
+fig.text(0.05, 0.45, 'High-Beta\nRebound', ha='left', color='w')
+these_labels, these_colors = get_labels('Post-Movement Gamma', 1)
 mne.viz.plot_channel_labels_circle(
-    labels=labels, fig=fig, subplot='224', show=False,
-    colors={name: colors[name][:3] / 255 for name in label_names})
-fig.text(0.55, 0.45, 'Post-Movement\nGamma Increase', ha='left', color='w')
+    labels=these_labels, colors=these_colors, subplot='224', **circle_kwargs)
+fig.text(0.45, 0.45, 'Post-Movement\nGamma Increase', ha='left', color='w')
 
 fig.tight_layout()
+fig.subplots_adjust(top=0.88)
 fig.savefig(op.join(fig_dir, 'feature_labels.png'),
             facecolor=fig.get_facecolor(), dpi=300)
