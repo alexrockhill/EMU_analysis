@@ -43,6 +43,7 @@ brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
                     subjects_dir=subjects_dir, units='m')
 colors = mne._freesurfer.read_freesurfer_lut()[1]
 cmap = plt.get_cmap('viridis')
+cmap([0.5, 1])  # set extremes
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
                              'elec_contacts_info.tsv'), sep='\t')
@@ -374,7 +375,8 @@ for sub in subjects:
     for score, x, y, z in zip(these_scores['event_scores'],
                               these_pos['x'], these_pos['y'], these_pos['z']):
         if score > sig_thresh:
-            brain._renderer.sphere(center=(x, y, z), color=cmap(score)[:3],
+            brain._renderer.sphere(center=(x, y, z),
+                                   color=cmap(score * 2 - 1)[:3],
                                    scale=0.005)
 
 
@@ -408,7 +410,7 @@ for sub in subjects:
 
 
 label_names = list(labels.keys())
-acc_colors = [cmap(np.mean(labels[name])) for name in label_names]
+acc_colors = [cmap(np.mean(labels[name]) * 2 - 1) for name in label_names]
 
 brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
 brain.add_volume_labels(aseg=aseg, labels=label_names,
@@ -422,14 +424,14 @@ axes[1, 2].imshow(brain.screenshot())
 brain.close()
 
 # colorbar
-gradient = np.linspace(0, 1, 256)
+gradient = np.linspace(0.5, 1, 256)
 gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
 cax.imshow(gradient, aspect='auto', cmap=cmap)
 cax.set_xticks([])
 cax.invert_yaxis()
 cax.yaxis.tick_right()
 cax.set_yticks(np.array([0, 0.25, 0.5, 0.75, 1]) * 256)
-cax.set_yticklabels([0, 0.25, 0.5, 0.75, 1])
+cax.set_yticklabels([0.5, 0.625, 0.75, 0.875, 1])
 fig.tight_layout()
 pos = cax.get_position()
 cax.set_position((pos.x0, 0.15, 0.05, 0.7))
@@ -588,7 +590,7 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
     # anatomy plot
     brain = mne.viz.Brain(f'sub-{sub}', **dict(brain_kwargs, alpha=0.03))
     for loc, score in zip(locs, elec_scores):
-        brain._renderer.sphere(loc, cmap(score)[:3], 0.005)
+        brain._renderer.sphere(loc, cmap(score * 2 - 1)[:3], 0.005)
     brain.add_volume_labels(aseg='aparc+aseg', labels=labels,
                             alpha=0.5, legend=False, fill_holes=True)
     ch_names = [name.replace(' ', '') for name in info.ch_names]  # fix space
@@ -701,6 +703,11 @@ for ax_idx, text in enumerate(('Right front', 'Top down', 'Left front')):
     pos = axes[0, ax_idx + 2].get_position()
     fig.text(pos.x0 + pos.width / 2, 0.98, text, ha='center',
              fontsize='large')
+
+
+axes[0, 1].spines['top'].set_visible(False)
+for ax in axes[:, 1]:
+    ax.spines['right'].set_visible(False)
 
 
 fig.savefig(op.join(fig_dir, 'feature_anatomy.png'), dpi=300)
