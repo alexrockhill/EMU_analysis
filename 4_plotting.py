@@ -43,7 +43,6 @@ brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
                     subjects_dir=subjects_dir, units='m')
 colors = mne._freesurfer.read_freesurfer_lut()[1]
 cmap = plt.get_cmap('viridis')
-cmap([0.5, 1])  # set extremes
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
                              'elec_contacts_info.tsv'), sep='\t')
@@ -592,7 +591,7 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
     for loc, score in zip(locs, elec_scores):
         brain._renderer.sphere(loc, cmap(score * 2 - 1)[:3], 0.005)
     brain.add_volume_labels(aseg='aparc+aseg', labels=labels,
-                            alpha=0.5, legend=False, fill_holes=True)
+                            alpha=0.5, legend=False, fill_hole_size=1)
     ch_names = [name.replace(' ', '') for name in info.ch_names]  # fix space
     loc = locs[ch_names.index(f'{elec_name}{int(number)}')]
     brain.show_view(focalpoint=loc, **view)

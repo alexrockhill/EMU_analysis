@@ -37,6 +37,7 @@ def plot_image(fig, ax, img, freqs, times, vmin=None, vmax=None,
     if cbar:
         fig.colorbar(c)
     fig.tight_layout()
+    return c
 
 
 spec_data_dir = op.join(data_dir, 'derivatives', 'spectrograms')
@@ -175,8 +176,8 @@ for sub in subjects:
             plt.close(fig)
             # spectrograms by classification plot
             fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-            fig.suptitle('Spectrograms Based on Classification Accuracy '
-                         f'({score.round(2)})')
+            fig.suptitle(f'{ch} {event_dict[event][0]} Spectrograms Based '
+                         f'on Classification Accuracy ({score.round(2)})')
             pred = classifier.predict(X_test_pca)
             tp = np.where(np.logical_and(pred == y_test, y_test == 1))[0]
             fp = np.where(np.logical_and(pred != y_test, y_test == 1))[0]
@@ -192,6 +193,7 @@ for sub in subjects:
                        np.median(tfr_data[event]['data'][fp], axis=0),
                        tfr_data[event]['freqs'], tfr_data[event]['times'],
                        vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
+            axes[0, 0].set_xlabel('')
             axes[0, 1].set_title(
                 f'False {event_dict[event][0].title()} ({len(fp)})')
             plot_image(fig, axes[1, 1],
@@ -199,16 +201,20 @@ for sub in subjects:
                        tfr_data[bl_event]['freqs'],
                        tfr_data[bl_event]['times'],
                        vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
+            axes[0, 1].set_xlabel('')
             axes[1, 1].set_title(
                 f'True {event_dict[bl_event][0].title()} ({len(tn)})')
-            plot_image(fig, axes[1, 0],
-                       np.median(tfr_data[bl_event]['data'][fn], axis=0),
-                       tfr_data[bl_event]['freqs'],
-                       tfr_data[bl_event]['times'],
-                       vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
+            c = plot_image(fig, axes[1, 0],
+                           np.median(tfr_data[bl_event]['data'][fn], axis=0),
+                           tfr_data[bl_event]['freqs'],
+                           tfr_data[bl_event]['times'],
+                           vmin=-1, vmax=1, cbar=False, cmap='RdYlBu_r')
             axes[1, 0].set_title(
                 f'False {event_dict[bl_event][0].title()} ({len(fn)})')
-            fig.tight_layout()
+            fig.subplots_adjust(top=0.9, right=0.9, bottom=0.07, hspace=0.2)
+            cax = fig.add_axes([0.915, 0.1, 0.01, 0.8])
+            fig.colorbar(c, cax=cax)
+            cax.set_ylabel(r'Power ($\mu$$V^{2}$)', labelpad=0)
             fig.savefig(op.join(svm_plot_dir, out_fname + '_comparison.png'))
             plt.close(fig)
             # single random example spectrograms plot
