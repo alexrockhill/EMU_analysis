@@ -5,6 +5,7 @@
 
 import os
 import os.path as op
+from pandas import read_csv
 
 import pd_parser
 
@@ -31,3 +32,7 @@ for sub in subjects:
                            beh=beh_fname, data_type='seeg')
 
 # Note: T1 was also manually aligned in freeview to ACPC before sharing
+
+# compute average response times and accuracties
+for sub in subjects:
+    df = 
