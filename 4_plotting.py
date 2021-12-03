@@ -92,7 +92,7 @@ for sub, elec_name, number, score in zip(
     if score > score_threshs[sub]:
         image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
         feature_maps[0] += abs(image) > image_threshs[sub]  # count
-        feature_maps[1] += np.sign(image) * (abs(image) > image_threshs[sub])
+        feature_maps[1] += image > image_threshs[sub]
         feature_maps[2] += abs(image)
         feature_maps[3] += (abs(image) > image_threshs[sub]) * score
 
@@ -354,11 +354,12 @@ fig.savefig(op.join(fig_dir, f'svm_csp_comparison.png'), dpi=300)
 
 # Figure 5: Plots of electrodes with high classification accuracies
 
-fig = plt.figure(figsize=(8, 4))
+fig = plt.figure(figsize=(8, 6))
 gs = fig.add_gridspec(3, 4)
 axes = np.array([[fig.add_subplot(gs[i, j]) for j in range(3)]
                  for i in range(3)])
-cax = fig.add_subplot(gs[:, 3])
+cax = fig.add_subplot(gs[:2, 3])
+cax2 = fig.add_subplot(gs[2, 3])
 for ax in axes.flatten():
     ax.axis('off')
     ax.invert_yaxis()
@@ -391,39 +392,10 @@ axes[0, 2].imshow(brain.screenshot())
 brain.close()
 fig.text(0.1, 0.85, 'a')
 
-# plot sampling density by region
+# get labels
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
-                   'white-matter', 'cc_')
-densities = dict()
-for sub in subjects:
-    these_pos = ch_pos[ch_pos['sub'] == sub]
-    for these_labels in these_pos['label']:
-        if isinstance(these_labels, str):
-            for label in these_labels.split(','):
-                if any([kw in label.lower() for kw in ignore_keywords]):
-                    continue
-                if label in densities:
-                    densities[label] += 1
-                else:
-                    densities[label] = 1
+                   'white-matter', 'wm-', 'cc_', 'cerebellum')
 
-
-label_names = list(densities.keys())
-max_count = max(densities.values())
-dens_colors = [cmap(densities[name] / max_count) for name in label_names]
-
-brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
-brain.add_volume_labels(aseg=aseg, labels=label_names,
-                        colors=dens_colors, alpha=1, smooth=0.9)
-brain.show_view(azimuth=60, elevation=100, distance=.3)
-axes[1, 0].imshow(brain.screenshot())
-brain.show_view(azimuth=90, elevation=0)
-axes[1, 1].imshow(brain.screenshot())
-brain.show_view(azimuth=120, elevation=100)
-axes[1, 2].imshow(brain.screenshot())
-brain.close()
-
-# plot accuracy by labels
 labels = dict()
 for sub in subjects:
     these_scores = scores[scores['sub'] == sub]
@@ -447,12 +419,13 @@ brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
 brain.add_volume_labels(aseg=aseg, labels=label_names,
                         colors=acc_colors, alpha=1, smooth=0.9)
 brain.show_view(azimuth=60, elevation=100, distance=.3)
-axes[2, 0].imshow(brain.screenshot())
+axes[1, 0].imshow(brain.screenshot())
 brain.show_view(azimuth=90, elevation=0)
-axes[2, 1].imshow(brain.screenshot())
+axes[1, 1].imshow(brain.screenshot())
 brain.show_view(azimuth=120, elevation=100)
-axes[2, 2].imshow(brain.screenshot())
+axes[1, 2].imshow(brain.screenshot())
 brain.close()
+fig.text(0.1, 0.55, 'b')
 
 # colorbar
 gradient = np.linspace(0.5, 1, 256)
@@ -463,10 +436,55 @@ cax.invert_yaxis()
 cax.yaxis.tick_right()
 cax.set_yticks(np.array([0, 0.25, 0.5, 0.75, 1]) * 256)
 cax.set_yticklabels([0.5, 0.625, 0.75, 0.875, 1])
-fig.tight_layout()
-pos = cax.get_position()
-cax.set_position((pos.x0, 0.15, 0.05, 0.7))
+cax.yaxis.set_label_position('right')
+cax.set_ylabel('Accuracy')
 
+# plot counts of electrodes per area
+counts = dict()
+for sub in subjects:
+    these_pos = ch_pos[ch_pos['sub'] == sub]
+    for these_labels in these_pos['label']:
+        if isinstance(these_labels, str):
+            for label in these_labels.split(','):
+                if any([kw in label.lower() for kw in ignore_keywords]):
+                    continue
+                if label in counts:
+                    counts[label] += 1
+                else:
+                    counts[label] = 1
+
+
+density_colors = [cmap(min([counts[name] / 10, 1.])) for name in label_names]
+
+brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
+brain.add_volume_labels(aseg=aseg, labels=label_names,
+                        colors=density_colors, alpha=1, smooth=0.9)
+brain.show_view(azimuth=60, elevation=100, distance=.3)
+axes[2, 0].imshow(brain.screenshot())
+brain.show_view(azimuth=90, elevation=0)
+axes[2, 1].imshow(brain.screenshot())
+brain.show_view(azimuth=120, elevation=100)
+axes[2, 2].imshow(brain.screenshot())
+brain.close()
+fig.text(0.1, 0.3, 'c')
+
+# count colorbar
+gradient = np.linspace(0, 10, 256)
+gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
+cax2.imshow(gradient, aspect='auto', cmap=cmap)
+cax2.set_xticks([])
+cax2.invert_yaxis()
+cax2.yaxis.tick_right()
+cax2.set_yticks(np.linspace(2, 10, 5) * 256 / 10)
+cax2.set_yticklabels(['2', '4', '6', '8', '10+'])
+cax2.yaxis.set_label_position('right')
+cax2.set_ylabel('Contact Count')
+
+fig.subplots_adjust(hspace=0)
+pos = cax.get_position()
+cax.set_position((pos.x0, 0.35, 0.05, 0.5))
+pos = cax2.get_position()
+cax2.set_position((pos.x0, 0.1, 0.05, 0.2))
 fig.savefig(op.join(fig_dir, 'high_accuracy.png'), dpi=300)
 
 
@@ -538,7 +556,7 @@ for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
     ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
                         enumerate(np.array(freqs).round(
                         ).astype(int))], fontsize=8)
-    c = ax.imshow(feature_map, vmin={0: 0, 1: -1, 2: 0, 3: 0.5}[i],
+    c = ax.imshow(feature_map, vmin={0: 0, 1: 0, 2: 0, 3: 0.5}[i],
                   vmax=1, cmap='viridis', aspect='auto')
     ax.invert_yaxis()
     fig.colorbar(c, ax=ax)
@@ -547,7 +565,7 @@ for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
 axes[0].set_title('Relative Abundance of\nSignificant Coefficients')
 axes[0].set_ylabel('Frequency (Hz)')
 fig.text(0.04, 0.95, 'a', fontsize=24)
-axes[1].set_title('Proportion of\nSignificant Coefficients')
+axes[1].set_title('Proportion of Positive\nSignificant Coefficients')
 fig.text(0.52, 0.95, 'b', fontsize=24)
 axes[2].set_title('Average Relative Magnitude\nof Coefficients')
 fig.text(0.04, 0.47, 'c', fontsize=24)

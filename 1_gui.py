@@ -71,6 +71,13 @@ for sub in subjects:
                                   f'sub-{sub}_task-{task}_info.fif'),
                           raw.info)
 
+# initialize for saving positions and labels
+subject = list()
+electrode_name = list()
+contact_number = list()
+ch_position = list()
+anat_label = list()
+
 # warp to template, takes ~15 minutes per subject, no user input
 template_subjects_dir = op.join(os.environ['FREESURFER_HOME'], 'subjects')
 if not op.exists(op.join(subjects_dir, template)):
@@ -124,12 +131,7 @@ for sub in subjects:
     brain.add_sensors(info, template_trans)
 
 
-# save positions and labels
-subject = list()
-electrode_name = list()
-contact_number = list()
-ch_position = list()
-anat_label = list()
+
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 for sub in subjects:
     info = mne.io.read_info(op.join(
@@ -141,7 +143,7 @@ for sub in subjects:
         coord_frame='head')
     montage.apply_trans(trans)
     labels = mne.get_montage_volume_labels(  # use at the end
-        montage, f'sub-{sub}', subjects_dir=subjects_dir, aseg=aseg, dist=1)[0]
+        montage, f'sub-{sub}', subjects_dir=subjects_dir, aseg=aseg, dist=3)[0]
     # plot warped
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
