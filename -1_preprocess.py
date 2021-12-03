@@ -5,7 +5,9 @@
 
 import os
 import os.path as op
+import numpy as np
 from pandas import read_csv
+import json
 
 import pd_parser
 
@@ -35,4 +37,17 @@ for sub in subjects:
 
 # compute average response times and accuracties
 for sub in subjects:
-    df = 
+    df = read_csv(op.join(bids_root, f'sub-{sub}', 'beh',
+                          f'sub-{sub}_task-{task}_beh.tsv'), sep='\t')
+    if sub == 11:  # subject put hands on wrong keys at from point on
+        df = df[:153]
+    print('sub-{} Response Time: {} +/- {}'.format(
+        sub, np.mean(df['RT']).round(3), np.std(df['RT']).round(3)))
+    with open(op.join(bids_root, f'sub-{sub}', 'beh',
+                      f'sub-{sub}_task-{task}_beh.json')) as fid:
+        meta = json.load(fid)
+    correct = df['keypressed'] == np.where(
+        df['left_or_right'] == 'right', meta['rightkey'], meta['leftkey'])
+    correct = correct[df['keypressed'] != 0]
+    print(f'sub-{sub} Accuracy: {(100 * np.mean(correct)).round(1)}%')
+    print('sub-{} Missed: {}'.format(sub, (df['keypressed'] == 0).sum()))

@@ -355,9 +355,9 @@ fig.savefig(op.join(fig_dir, f'svm_csp_comparison.png'), dpi=300)
 # Figure 5: Plots of electrodes with high classification accuracies
 
 fig = plt.figure(figsize=(8, 4))
-gs = fig.add_gridspec(2, 4)
+gs = fig.add_gridspec(3, 4)
 axes = np.array([[fig.add_subplot(gs[i, j]) for j in range(3)]
-                 for i in range(2)])
+                 for i in range(3)])
 cax = fig.add_subplot(gs[:, 3])
 for ax in axes.flatten():
     ax.axis('off')
@@ -389,10 +389,42 @@ axes[0, 1].imshow(brain.screenshot())
 brain.show_view(azimuth=120, elevation=100)
 axes[0, 2].imshow(brain.screenshot())
 brain.close()
+fig.text(0.1, 0.85, 'a')
+
+# plot sampling density by region
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
+                   'white-matter', 'cc_')
+densities = dict()
+for sub in subjects:
+    these_pos = ch_pos[ch_pos['sub'] == sub]
+    for these_labels in these_pos['label']:
+        if isinstance(these_labels, str):
+            for label in these_labels.split(','):
+                if any([kw in label.lower() for kw in ignore_keywords]):
+                    continue
+                if label in densities:
+                    densities[label] += 1
+                else:
+                    densities[label] = 1
+
+
+label_names = list(densities.keys())
+max_count = max(densities.values())
+dens_colors = [cmap(densities[name] / max_count) for name in label_names]
+
+brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
+brain.add_volume_labels(aseg=aseg, labels=label_names,
+                        colors=dens_colors, alpha=1, smooth=0.9)
+brain.show_view(azimuth=60, elevation=100, distance=.3)
+axes[1, 0].imshow(brain.screenshot())
+brain.show_view(azimuth=90, elevation=0)
+axes[1, 1].imshow(brain.screenshot())
+brain.show_view(azimuth=120, elevation=100)
+axes[1, 2].imshow(brain.screenshot())
+brain.close()
 
 # plot accuracy by labels
 labels = dict()
-ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
 for sub in subjects:
     these_scores = scores[scores['sub'] == sub]
     these_pos = ch_pos[ch_pos['sub'] == sub]
@@ -415,11 +447,11 @@ brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
 brain.add_volume_labels(aseg=aseg, labels=label_names,
                         colors=acc_colors, alpha=1, smooth=0.9)
 brain.show_view(azimuth=60, elevation=100, distance=.3)
-axes[1, 0].imshow(brain.screenshot())
+axes[2, 0].imshow(brain.screenshot())
 brain.show_view(azimuth=90, elevation=0)
-axes[1, 1].imshow(brain.screenshot())
+axes[2, 1].imshow(brain.screenshot())
 brain.show_view(azimuth=120, elevation=100)
-axes[1, 2].imshow(brain.screenshot())
+axes[2, 2].imshow(brain.screenshot())
 brain.close()
 
 # colorbar
