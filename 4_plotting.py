@@ -516,49 +516,14 @@ ax.scatter([0.42], [len(labels) - 5], color='black')
 ax.text(0.27, len(labels) - 6.5, 'Not significant', va='center')
 ax.scatter([0.42], [len(labels) - 6.5], facecolors='none', color='black')
 ax.plot([0.26, 0.26, 0.435, 0.435, 0.26],
-        len(labels) - np.array([1, 7.1, 7.1, 1, 1]), color='black')
+        len(labels) - np.array([1, 7.15, 7.15, 1, 1]), color='black')
 
 fig.tight_layout()
 fig.subplots_adjust(top=0.95, bottom=0.07)
 fig.savefig(op.join(fig_dir, 'label_accuracies.png'),
             facecolor=fig.get_facecolor(), dpi=300)
 
-
-# Figure 7: Feature maps
-
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-axes = axes.flatten()
-for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
-    ax.set_xticks(np.linspace(0, spec_shape[1], 5))
-    ax.set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
-    ax.set_yticks(range(len(freqs)))
-    ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
-                        enumerate(np.array(freqs).round(
-                        ).astype(int))], fontsize=8)
-    c = ax.imshow(feature_map, vmin={0: 0, 1: 0, 2: 0, 3: 0.5}[i],
-                  vmax=1, cmap='viridis', aspect='auto')
-    ax.invert_yaxis()
-    fig.colorbar(c, ax=ax)
-
-
-axes[0].set_title('Relative Abundance of\nSignificant Coefficients')
-axes[0].set_ylabel('Frequency (Hz)')
-fig.text(0.04, 0.95, 'a', fontsize=24)
-axes[1].set_title('Proportion of Positive\nSignificant Coefficients')
-fig.text(0.52, 0.95, 'b', fontsize=24)
-axes[2].set_title('Average Relative Magnitude\nof Coefficients')
-fig.text(0.04, 0.47, 'c', fontsize=24)
-axes[2].set_xlabel('Time (s)')
-axes[2].set_ylabel('Frequency (Hz)')
-axes[3].set_xlabel('Time (s)')
-axes[3].set_title('Average Accuracy by\nTime-Frequency')
-fig.text(0.52, 0.47, 'd', fontsize=24)
-
-fig.tight_layout()
-fig.savefig(op.join(fig_dir, 'feature_map.png'), dpi=300)
-
-
-# Figure 8: Best contacts
+# Figure 7: Best contacts
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
                    'white-matter', 'wm-')
@@ -602,7 +567,7 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
     locs = np.array(list(montage.get_positions()['ch_pos'].values()))
     # spectrogram plot
     image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
-    mask = abs(image) > image_threshs[sub]
+    mask = abs(image) > image_thresh
     # mask = binary_opening(binary_closing(mask))  # remove noise
     X, Y = np.meshgrid(range(image.shape[1]), range(image.shape[0]))
     img = ax.imshow(image, aspect='auto', vmin=-0.05, vmax=0.05,
@@ -638,7 +603,41 @@ fig.tight_layout()
 fig.savefig(op.join(fig_dir, 'best_electrodes.png'), dpi=300)
 
 
-# Figure 8: Anatomical Locations of Significant Correlations Areas
+# Figure 8: Feature maps
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+axes = axes.flatten()
+for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
+    ax.set_xticks(np.linspace(0, spec_shape[1], 5))
+    ax.set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
+    ax.set_yticks(range(len(freqs)))
+    ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
+                        enumerate(np.array(freqs).round(
+                        ).astype(int))], fontsize=8)
+    c = ax.imshow(feature_map, vmin={0: 0, 1: 0, 2: 0, 3: 0.5}[i],
+                  vmax=1, cmap='viridis', aspect='auto')
+    ax.invert_yaxis()
+    fig.colorbar(c, ax=ax)
+
+
+axes[0].set_title('Relative Abundance of\nSignificant Coefficients')
+axes[0].set_ylabel('Frequency (Hz)')
+fig.text(0.04, 0.95, 'a', fontsize=24)
+axes[1].set_title('Proportion of Positive\nSignificant Coefficients')
+fig.text(0.52, 0.95, 'b', fontsize=24)
+axes[2].set_title('Average Relative Magnitude\nof Coefficients')
+fig.text(0.04, 0.47, 'c', fontsize=24)
+axes[2].set_xlabel('Time (s)')
+axes[2].set_ylabel('Frequency (Hz)')
+axes[3].set_xlabel('Time (s)')
+axes[3].set_title('Average Accuracy by\nTime-Frequency')
+fig.text(0.52, 0.47, 'd', fontsize=24)
+
+fig.tight_layout()
+fig.savefig(op.join(fig_dir, 'feature_map.png'), dpi=300)
+
+
+# Figure 9: Anatomical Locations of Significant Correlations Areas
 
 fig, axes = plt.subplots(len(areas), 5, figsize=(6.5, 10))
 
