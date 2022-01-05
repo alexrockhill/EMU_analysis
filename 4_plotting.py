@@ -470,8 +470,6 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
 labels = set([
     label for labels in ch_pos['label'] for label in labels.split(',')
     if not any([kw in label.lower() for kw in ignore_keywords])])
-no_label = [i for i, label in enumerate(ch_pos['label'])
-            if not any([this_label in label for this_label in labels])]
 label_scores = {label: [score for score, labels in zip(
     scores['event_scores'], ch_pos['label']) if label in labels.split(',')]
     for label in labels}
@@ -485,12 +483,12 @@ for idx, label in enumerate(labels):
         for name, idxs in {'sig': sig, 'not_sig': not_sig}.items():
             these_scores = [score for i, (score, labels, sub) in enumerate(zip(
                 scores['event_scores'], ch_pos['label'], ch_pos['sub']))
-                if (lh == sub in lh_sub) and label in labels and i in idxs]
+                if label in labels and i in idxs and (lh == (sub in lh_sub))]
             # triangle if left hand used, hollow if not significant
             ax.scatter(these_scores, [idx] * len(these_scores),
                        color=colors[label][:3] / 255,
                        marker='^' if lh else None,
-                       fillstyle=None if name == 'sig' else 'none')
+                       facecolors=None if name == 'sig' else 'none')
 
 
 ax.axis([0.25, 1, -0.75, len(labels) - 0.25])
@@ -509,12 +507,16 @@ ax.set_xlabel('Linear SVM Accuracy', color='w')
 ax.set_ylabel('Anatomical Label', color='w')
 
 # make legend
-ax.text(0.72, 3, 'Subject used right hand', va='center')
-ax.scatter([0.97], [3], color='black')
-ax.text(0.72, 1.5, 'Subject used left hand', va='center')
-ax.scatter([0.97], [1.5], marker='^', color='black')
-ax.plot([0.7, 0.7, 0.99, 0.99, 0.7], [0.4, 4.6, 4.6, 0.4, 0.4],
-        color='black')
+ax.text(0.27, len(labels) - 2, 'Right hand', va='center')
+ax.scatter([0.42], [len(labels) - 2], color='black')
+ax.text(0.27, len(labels) - 3.5, 'Left hand', va='center')
+ax.scatter([0.42], [len(labels) - 3.5], marker='^', color='black')
+ax.text(0.27, len(labels) - 5, 'Significant', va='center')
+ax.scatter([0.42], [len(labels) - 5], color='black')
+ax.text(0.27, len(labels) - 6.5, 'Not significant', va='center')
+ax.scatter([0.42], [len(labels) - 6.5], facecolors='none', color='black')
+ax.plot([0.26, 0.26, 0.435, 0.435, 0.26],
+        len(labels) - np.array([1, 7.1, 7.1, 1, 1]), color='black')
 
 fig.tight_layout()
 fig.subplots_adjust(top=0.95, bottom=0.07)

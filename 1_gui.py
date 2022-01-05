@@ -84,6 +84,8 @@ template_subjects_dir = op.join(os.environ['FREESURFER_HOME'], 'subjects')
 if not op.exists(op.join(subjects_dir, template)):
     os.symlink(op.join(template_subjects_dir, template),
                op.join(subjects_dir, template))
+
+
 template_brain = nib.load(
     op.join(subjects_dir, template, 'mri', 'brain.mgz'))
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
@@ -140,6 +142,7 @@ pd.DataFrame(dict(sub=subject, elec_name=electrode_name, number=contact_number,
 
 
 # plot final result
+template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 for sub in subjects:
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
@@ -154,15 +157,3 @@ for sub in subjects:
     brain = mne.viz.Brain(template, subjects_dir=subjects_dir,
                           cortex='low_contrast', alpha=0.2, background='white')
     brain.add_sensors(info, template_trans)
-
-
-for i in ch_pos.index:
-    sub = ch_pos['sub'][i]
-    info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
-        f'sub-{sub}_template-{template}_task-{task}_info.fif'))
-    ch_names = [ch_name.replace(' ', '') for ch_name in info.ch_names]
-    ch_idx = ch_names.index(str(ch_pos['elec_name'][i]) + str(int(ch_pos['number'][i])))
-    x, y, z = mne.transforms.apply_trans(template_trans, info['chs'][ch_idx]['loc'][:3])
-    ch_pos['x'][i], ch_pos['y'][i], ch_pos['z'][i] = x, y, z
-
