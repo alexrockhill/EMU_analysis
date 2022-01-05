@@ -28,6 +28,10 @@ for sub in subjects:
     np.savez_compressed(op.join(
         subjects_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'),
         reg_affine=reg_affine)
+    CT_aligned = mne.transforms.apply_volume_registration(
+        CT_orig, T1, reg_affine)
+    nib.save(CT_aligned, op.join(
+        subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
 
 
 # a few subjects didn't work and this was used to align (11 and 12)
@@ -36,14 +40,10 @@ import ants
 T1 = ants.image_read(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
 CT_orig = ants.image_read(op.join(bids_root, f'sub-{sub}', 'anat',
                                   f'sub-{sub}_ct.nii.gz'))
-reg_affine_trans = ants.registration(
-    fixed=T1, moving=CT_orig, type_of_transform='Rigid')
-CT_aligned = ants.apply_transforms(
-    fixed=T1, moving=CT_orig, transformlist=reg_affine_trans['fwdtransforms'],
-    interpolator='linear')
-ants.image_write(CT_aligned, op.join(subjects_dir, f'sub-{sub}',
-                                     'CT', 'CT_aligned.mgz'))
-T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
+trans = ants.registration(fixed=T1, moving=CT_orig, type_of_transform='Rigid')
+ants.image_write(trans['warpedmovout'],
+                 op.join(subjects_dir, f'sub-{sub}',
+                         'CT', 'CT_aligned_test.mgz'))
 CT_orig = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
                            f'sub-{sub}_ct.nii.gz'))
 CT_aligned = nib.load(op.join(subjects_dir, f'sub-{sub}',
@@ -77,6 +77,7 @@ electrode_name = list()
 contact_number = list()
 ch_position = list()
 anat_label = list()
+lut = {v: k for k, v in mne._freesurfer.read_freesurfer_lut()[0].items()}
 
 # warp to template, takes ~15 minutes per subject, no user input
 template_subjects_dir = op.join(os.environ['FREESURFER_HOME'], 'subjects')
@@ -106,12 +107,36 @@ for sub in subjects:
         montage, CT_aligned, reg_affine, sdr_morph,
         subject_from=f'sub-{sub}', subject_to=template,
         subjects_dir_from=subjects_dir, subjects_dir_to=subjects_dir)
+    ch_pos = montage_warped.get_positions()['ch_pos'].copy()  # use these later
+    # now go back to "head" coordinates to save to raw
     montage_warped.apply_trans(mne.transforms.invert_transform(template_trans))
     raw.set_montage(montage_warped, on_missing='warn')
     mne.io.write_info(
         op.join(subjects_dir, f'sub-{sub}', 'ieeg',
                 f'sub-{sub}_template-{template}_task-{task}_info.fif'),
         raw.info)
+    nib.save(elec_image, op.join(subjects_dir, f'sub-{sub}', 'ieeg',
+                                 'elec_image.mgz'))
+    aseg_img = np.array(nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri',
+                                         f'{aseg}.mgz')).dataobj)
+    elec_img = np.array(elec_image.dataobj)
+    for i, ch in enumerate(raw.ch_names):
+        subject.append(sub)
+        electrode_name.append(''.join([letter for letter in ch if
+                                       not letter.isdigit()]).rstrip())
+        contact_number.append(''.join([letter for letter in ch if
+                                       letter.isdigit()]).rstrip())
+        ch_position.append(ch_pos[ch])
+        labels = [lut[idx] for idx in np.unique(aseg_img[elec_img == i + 1])]
+        anat_label.append(','.join(labels))
+
+
+x = [pos[0] for pos in ch_position]
+y = [pos[1] for pos in ch_position]
+z = [pos[2] for pos in ch_position]
+pd.DataFrame(dict(sub=subject, elec_name=electrode_name, number=contact_number,
+                  x=x, y=y, z=z, label=anat_label)).to_csv(
+    op.join(out_dir, 'elec_contacts_info.tsv'), sep='\t', index=False)
 
 
 # plot final result
@@ -131,42 +156,13 @@ for sub in subjects:
     brain.add_sensors(info, template_trans)
 
 
-
-template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
-for sub in subjects:
-    info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
-    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
-    # label anatomical location of contacts
-    montage = mne.channels.make_dig_montage(
-        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
-        coord_frame='head')
-    montage.apply_trans(trans)
-    labels = mne.get_montage_volume_labels(  # use at the end
-        montage, f'sub-{sub}', subjects_dir=subjects_dir, aseg=aseg, dist=3)[0]
-    # plot warped
+for i in ch_pos.index:
+    sub = ch_pos['sub'][i]
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_template-{template}_task-{task}_info.fif'))
-    # get positions in template space
-    montage = mne.channels.make_dig_montage(
-        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
-        coord_frame='head')
-    montage.apply_trans(template_trans)
-    ch_pos = montage.get_positions()['ch_pos']
-    for ch in ch_pos:
-        subject.append(sub)
-        electrode_name.append(''.join([letter for letter in ch if
-                                       not letter.isdigit()]).rstrip())
-        contact_number.append(''.join([letter for letter in ch if
-                                       letter.isdigit()]).rstrip())
-        ch_position.append(ch_pos[ch])
-        anat_label.append(','.join(labels[ch]))
+    ch_names = [ch_name.replace(' ', '') for ch_name in info.ch_names]
+    ch_idx = ch_names.index(str(ch_pos['elec_name'][i]) + str(int(ch_pos['number'][i])))
+    x, y, z = mne.transforms.apply_trans(template_trans, info['chs'][ch_idx]['loc'][:3])
+    ch_pos['x'][i], ch_pos['y'][i], ch_pos['z'][i] = x, y, z
 
-
-x = [pos[0] for pos in ch_position]
-y = [pos[1] for pos in ch_position]
-z = [pos[2] for pos in ch_position]
-pd.DataFrame(dict(sub=subject, elec_name=electrode_name, number=contact_number,
-                  x=x, y=y, z=z, label=anat_label)).to_csv(
-    op.join(out_dir, 'elec_contacts_info.tsv'), sep='\t', index=False)

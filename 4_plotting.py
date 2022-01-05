@@ -68,33 +68,28 @@ with np.load(op.join(source_dir, 'null_images.npz')) as null_images:
     null_images = {k: v for k, v in null_images.items()}
 
 
-# compute null distribution thresholds
-score_threshs = dict()
-image_threshs = dict()
-for sub in subjects:
-    these_scores = scores[scores['sub'] == sub]
-    score_threshs[sub] = np.quantile(these_scores['null_scores'], 1 - alpha)
-    null_dist = list()
-    for name, null_image in null_images.items():
-        sub2, ch = [phrase.split('-')[1] for phrase in
-                    name.split('_')[0:2]]
-        if sub == int(sub2):
-            null_dist.append(null_image)
-    image_threshs[sub] = np.quantile(
-        abs(np.array(null_dist)), 1 - alpha, axis=0)
+# compute significant indices pooled across subjects
+sig_thresh = np.quantile(scores['null_scores'], 1 - alpha)
+not_sig = [i for i, score in enumerate(scores['event_scores'])
+           if score <= sig_thresh]
+sig = [i for i, score in enumerate(scores['event_scores'])
+       if score > sig_thresh]
 
+# compute null distribution thresholds per subject and per image
+image_thresh = np.quantile(
+    abs(np.array(list(null_images.values()))), 1 - alpha, axis=0)
 
 # feature map computation
 feature_maps = np.zeros((4,) + spec_shape)
 for sub, elec_name, number, score in zip(
         scores['sub'], scores['elec_name'], scores['number'],
         scores['event_scores']):
-    if score > score_threshs[sub]:
+    if score > sig_thresh:
         image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
-        feature_maps[0] += abs(image) > image_threshs[sub]  # count
-        feature_maps[1] += image > image_threshs[sub]
+        feature_maps[0] += abs(image) > image_thresh  # count
+        feature_maps[1] += image > image_thresh
         feature_maps[2] += abs(image)
-        feature_maps[3] += (abs(image) > image_threshs[sub]) * score
+        feature_maps[3] += (abs(image) > image_thresh) * score
 
 
 # normalize
@@ -124,7 +119,7 @@ for name, image in images.items():
                       (ch_pos['elec_name'] == elec_name) &
                       (ch_pos['number'].astype(int).astype(str) == number)]):
         continue  # no channel position, skip
-    mask = (abs(image) > image_threshs[int(sub)]) * np.sign(image)
+    mask = (abs(image) > image_thresh) * np.sign(image)
     for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
         fmin_idx = np.argmin(abs(freqs - fmin))
         fmax_idx = np.argmin(abs(freqs - fmax))
@@ -258,21 +253,11 @@ fig.savefig(op.join(fig_dir, 'coverage.png'), dpi=300)
 binsize = 0.01
 bins = np.linspace(binsize, 1, int(1 / binsize)) - binsize / 2
 fig, ax = plt.subplots()
-sig = list()
-not_sig = list()
-for sub in subjects:
-    these_scores = scores[scores['sub'] == sub]
-    sig_thresh = np.quantile(these_scores['null_scores'], 1 - alpha)
-    sig += [score for score in these_scores['event_scores']
-            if score <= sig_thresh]
-    not_sig += [score for score in these_scores['event_scores']
-                if score > sig_thresh]
 
-
-ax.hist(sig, bins=bins, alpha=0.5, color='b',
-        density=True, label='not signficant')
-ax.hist(not_sig, bins=bins, alpha=0.5, color='r',
-        density=True, label='significant')
+ax.hist([scores['event_scores'][i] for i in not_sig], bins=bins,
+        alpha=0.5, color='b', density=True, label='not signficant')
+ax.hist([scores['event_scores'][i] for i in sig], bins=bins,
+        alpha=0.5, color='r', density=True, label='significant')
 ax.hist(scores['null_scores'], bins=bins, alpha=0.5, color='gray',
         density=True, label='null')
 y_bounds = ax.get_ylim()
@@ -297,7 +282,7 @@ csp_freqs = np.logspace(np.log(8), np.log(250), 50, base=np.e)
 windows = np.linspace(0, 2, 11)
 windows = (windows[1:] + windows[:-1]) / 2  # take mean
 
-fig, axes = plt.subplots(len(subjects) // 2, 4, figsize=(16, 16))
+fig, axes = plt.subplots(len(subjects) // 2, 4, figsize=(12, 8))
 fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.08,
                     hspace=0.2, wspace=0.3)
 axes = axes.reshape(len(subjects), 2)
@@ -306,7 +291,6 @@ bins = np.linspace(0, 1 - binsize, int(1 / binsize))
 for i, sub in enumerate(subjects):
     ax, ax2 = axes[i]
     these_scores = scores[scores['sub'] == sub]
-    sig_thresh = np.quantile(these_scores['null_scores'], 1 - alpha)
     sig = [score for score in these_scores['event_scores']
            if score > sig_thresh]
     not_sig = [score for score in these_scores['event_scores']
@@ -368,16 +352,12 @@ for ax in axes.flatten():
 # color contacts by accuracy
 brain = mne.viz.Brain(template, **brain_kwargs)
 
-for sub in subjects:
-    these_scores = scores[scores['sub'] == sub]
-    these_pos = ch_pos[ch_pos['sub'] == sub]
-    sig_thresh = np.quantile(these_scores['null_scores'], 1 - alpha)
-    for score, x, y, z in zip(these_scores['event_scores'],
-                              these_pos['x'], these_pos['y'], these_pos['z']):
-        if score > sig_thresh:
-            brain._renderer.sphere(center=(x, y, z),
-                                   color=cmap(score * 2 - 1)[:3],
-                                   scale=0.005)
+for score, x, y, z in zip(scores['event_scores'],
+                          ch_pos['x'], ch_pos['y'], ch_pos['z']):
+    if score > sig_thresh:
+        brain._renderer.sphere(center=(x, y, z),
+                               color=cmap(score * 2 - 1)[:3],
+                               scale=0.005)
 
 
 axes[0, 0].set_title('Right front')
@@ -397,19 +377,15 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
                    'white-matter', 'wm-', 'cc_', 'cerebellum')
 
 labels = dict()
-for sub in subjects:
-    these_scores = scores[scores['sub'] == sub]
-    these_pos = ch_pos[ch_pos['sub'] == sub]
-    for score, these_labels in zip(these_scores['event_scores'],
-                                   these_pos['label']):
-        if isinstance(these_labels, str):
-            for label in these_labels.split(','):
-                if any([kw in label.lower() for kw in ignore_keywords]):
-                    continue
-                if label in labels:
-                    labels[label].append(score)
-                else:
-                    labels[label] = [score]
+for score, these_labels in zip(scores['event_scores'], ch_pos['label']):
+    if isinstance(these_labels, str):
+        for label in these_labels.split(','):
+            if any([kw in label.lower() for kw in ignore_keywords]):
+                continue
+            if label in labels:
+                labels[label].append(score)
+            else:
+                labels[label] = [score]
 
 
 label_names = list(labels.keys())
@@ -494,6 +470,8 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
 labels = set([
     label for labels in ch_pos['label'] for label in labels.split(',')
     if not any([kw in label.lower() for kw in ignore_keywords])])
+no_label = [i for i, label in enumerate(ch_pos['label'])
+            if not any([this_label in label for this_label in labels])]
 label_scores = {label: [score for score, labels in zip(
     scores['event_scores'], ch_pos['label']) if label in labels.split(',')]
     for label in labels}
@@ -503,16 +481,16 @@ fig, ax = plt.subplots(figsize=(8, 12), facecolor='black')
 fig.suptitle('Classification Accuracies by Label', color='w')
 
 for idx, label in enumerate(labels):
-    rh_scores = [score for score, labels, sub in zip(
-        scores['event_scores'], ch_pos['label'], ch_pos['sub'])
-        if sub not in lh_sub and label in labels]
-    ax.scatter(rh_scores, [idx] * len(rh_scores),
-               color=colors[label][:3] / 255)
-    lh_scores = [score for score, labels, sub in zip(
-        scores['event_scores'], ch_pos['label'], ch_pos['sub'])
-        if sub in lh_sub and label in labels]
-    ax.scatter(lh_scores, [idx] * len(lh_scores),
-               color=colors[label][:3] / 255, marker='^')
+    for lh in (True, False):
+        for name, idxs in {'sig': sig, 'not_sig': not_sig}.items():
+            these_scores = [score for i, (score, labels, sub) in enumerate(zip(
+                scores['event_scores'], ch_pos['label'], ch_pos['sub']))
+                if (lh == sub in lh_sub) and label in labels and i in idxs]
+            # triangle if left hand used, hollow if not significant
+            ax.scatter(these_scores, [idx] * len(these_scores),
+                       color=colors[label][:3] / 255,
+                       marker='^' if lh else None,
+                       fillstyle=None if name == 'sig' else 'none')
 
 
 ax.axis([0.25, 1, -0.75, len(labels) - 0.25])
@@ -549,7 +527,6 @@ fig.savefig(op.join(fig_dir, 'label_accuracies.png'),
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 axes = axes.flatten()
 for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
-    ax.set_xlabel('Time (s)')
     ax.set_xticks(np.linspace(0, spec_shape[1], 5))
     ax.set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
     ax.set_yticks(range(len(freqs)))
@@ -569,7 +546,9 @@ axes[1].set_title('Proportion of Positive\nSignificant Coefficients')
 fig.text(0.52, 0.95, 'b', fontsize=24)
 axes[2].set_title('Average Relative Magnitude\nof Coefficients')
 fig.text(0.04, 0.47, 'c', fontsize=24)
+axes[2].set_xlabel('Time (s)')
 axes[2].set_ylabel('Frequency (Hz)')
+axes[3].set_xlabel('Time (s)')
 axes[3].set_title('Average Accuracy by\nTime-Frequency')
 fig.text(0.52, 0.47, 'd', fontsize=24)
 
@@ -581,7 +560,7 @@ fig.savefig(op.join(fig_dir, 'feature_map.png'), dpi=300)
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
                    'white-matter', 'wm-')
-best_contact_idx = np.argsort(scores['event_scores'])[-4:][::-1]
+best_contact_idx = np.argsort(scores['event_scores'])[-3:][::-1]
 
 views = [dict(azimuth=250, elevation=60, distance=0.25),
          dict(azimuth=60, elevation=80, distance=0.25),
@@ -589,14 +568,13 @@ views = [dict(azimuth=250, elevation=60, distance=0.25),
 
 fig, axes = plt.subplots(3, 2, figsize=(6, 8))
 axes[-1, 0].set_xlabel('Time (s)')
-axes[-1, 0].set_xticks(np.linspace(0, spec_shape[1], 5))
-axes[-1, 0].set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
 for ax in axes[:, 1]:
     ax.axis('off')
 
 
-for ax in axes[:-1, 0]:
-    ax.set_xticks([])
+for ax in axes[:, 0]:
+    ax.set_xticks(np.linspace(0, spec_shape[1] - 1, 5))
+    ax.set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
 
 
 for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
@@ -619,16 +597,14 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
         aseg=aseg, dist=5)[0].values()
     labels = set([label for these_labels in labels for label in these_labels
                   if not any([kw in label.lower() for kw in ignore_keywords])])
-    elec_scores = scores[(scores['sub'] == sub) &
-                         (scores['elec_name'] == elec_name)]['event_scores']
     locs = np.array(list(montage.get_positions()['ch_pos'].values()))
     # spectrogram plot
     image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
     mask = abs(image) > image_threshs[sub]
     # mask = binary_opening(binary_closing(mask))  # remove noise
     X, Y = np.meshgrid(range(image.shape[1]), range(image.shape[0]))
-    ax.imshow(image, aspect='auto', vmin=-0.05, vmax=0.05,
-              cmap='viridis')
+    img = ax.imshow(image, aspect='auto', vmin=-0.05, vmax=0.05,
+                    cmap='viridis')
     ax.contour(X, Y, mask, levels=[0.5], colors=['r'], alpha=0.25)
     ax.set_yticks(range(len(freqs)))
     ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
@@ -636,10 +612,12 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
                         ).astype(int))], fontsize=6)
     ax.set_ylabel('Frequency (Hz)')
     ax.invert_yaxis()
+    fig.colorbar(img, ax=ax)
     # anatomy plot
     brain = mne.viz.Brain(f'sub-{sub}', **dict(brain_kwargs, alpha=0.03))
-    for loc, score in zip(locs, elec_scores):
-        brain._renderer.sphere(loc, cmap(score * 2 - 1)[:3], 0.005)
+    for loc, name in zip(locs, montage.ch_names):
+        is_best = int(name.replace(elec_name, '').replace(' ', '')) == number
+        brain._renderer.sphere(loc, 'black' if is_best else 'gray', 0.005)
     brain.add_volume_labels(aseg='aparc+aseg', labels=labels,
                             alpha=0.5, legend=False, fill_hole_size=1)
     ch_names = [name.replace(' ', '') for name in info.ch_names]  # fix space
@@ -662,8 +640,6 @@ fig.savefig(op.join(fig_dir, 'best_electrodes.png'), dpi=300)
 
 fig, axes = plt.subplots(len(areas), 5, figsize=(6.5, 10))
 
-axes[-1, 0].set_xticks(np.linspace(0, spec_shape[1], 3))
-axes[-1, 0].set_xticklabels([-0.5, 0, 0.5])
 axes[-1, 0].set_xlabel('Time (s)')
 axes[-1, 1].set_xlabel('Proportion of Area')
 for ax in axes[:-1, :2].flatten():
@@ -683,7 +659,7 @@ idx = 0
 for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
     # SVM spectrogram coefficients
     ax = axes[idx][0]
-    ax.imshow(feature_maps[fm_idx], vmin={0: 0, 1: -1, 2: 0, 3: 0.5}[fm_idx],
+    ax.imshow(feature_maps[fm_idx], vmin={0: 0, 1: 0, 2: 0, 3: 0.5}[fm_idx],
               vmax=1, cmap='viridis', aspect='auto')
     fmin_idx = np.argmin(abs(freqs - fmin))
     fmax_idx = max([np.argmin(abs(freqs - fmax)), fmin_idx + 1])
@@ -702,9 +678,9 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
     rects = ax.hist(area_contacts[area].values(), bins=bins, color='gray')[2]
     for rect, center in zip(rects, (bins[:-1] + bins[1:]) / 2):
         if center >= prop_thresh:
-            rect.set_color('blue')
+            rect.set_color('yellow')
         if center <= -prop_thresh:
-            rect.set_color('red')
+            rect.set_color('blue')
     ax.set_ylim([0, 50])
     # plot contacts
     brain = mne.viz.Brain(template, **brain_kwargs)
@@ -715,7 +691,7 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
                          (ch_pos['number'] == number)].reset_index().loc[0]
             brain._renderer.sphere(
                 center=(pos['x'], pos['y'], pos['z']),
-                color='blue' if prop > prop_thresh else 'red',
+                color='yellow' if prop >= prop_thresh else 'blue',
                 scale=0.005)
     for view_idx, view in enumerate(
             (dict(azimuth=60, elevation=100, distance=0.325),

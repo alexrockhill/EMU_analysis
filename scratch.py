@@ -1,3 +1,16 @@
+for i in ch_pos.index:
+    sub = ch_pos['sub'][i]
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_template-{template}_task-{task}_info.fif'))
+    if ch_pos['elec_name'][i] == 'Event':
+        continue
+    ch_names = [ch_name.replace(' ', '') for ch_name in info.ch_names]
+    ch_idx = ch_names.index(str(ch_pos['elec_name'][i]) + str(int(ch_pos['number'][i])))
+    x, y, z = mne.transforms.apply_trans(template_trans, info['chs'][ch_idx]['loc'][:3])
+    ch_pos['x'][i], ch_pos['y'][i], ch_pos['z'][i] = x, y, z
+
+
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
 fig, axes = plt.subplots(len(areas), 2, figsize=(6, 12), facecolor='black')
 hashes = [ax.__hash__() for ax in axes.flatten()]
