@@ -17,7 +17,7 @@ from params import TASK as task
 from params import FREQUENCIES as freqs
 from params import EVENTS as event_dict
 from params import N_COMPONENTS as n_components
-from params import neighbor_reference
+from params import bipolar_reference
 
 
 def plot_image(fig, ax, img, freqs, times, vmin=None, vmax=None,
@@ -74,11 +74,11 @@ for sub in subjects:
     raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
              tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
     raw.load_data()
-    raw = neighbor_reference(raw)  # raw.set_eeg_reference('average')
+    raw = bipolar_reference(raw)  # raw.set_eeg_reference('average')
     # plot evoked
     for name, (event, tmin, tmax) in event_dict.items():
         epochs = mne.Epochs(raw, events, event_id[event], preload=True,
-                            tmin=tmin, tmax=tmax, detrend=1, baseline=None)
+                            tmin=tmin, tmax=tmax, baseline=None)
         fig = epochs.average().plot(show=False)
         fig.savefig(op.join(plot_dir, f'sub-{sub}_event-{name}_evoked.png'))
         plt.close(fig)

@@ -79,6 +79,7 @@ def bipolar_reference(raw, verbose=True):
     raw.load_data()
     ch_names = [name.replace(' ', '') for name in raw.ch_names]  # no spaces
     bipolar_names = list()
+    locs = list()
     data = list()
     chs_used = list()
     for i, ch in enumerate(ch_names):
@@ -91,11 +92,16 @@ def bipolar_reference(raw, verbose=True):
         pair = f'{elec_name}{int(number) + 1}'
         if pair in chs_used or pair not in ch_names:
             continue
-        data.append(raw._data[i] - raw._data[ch_names.index(pair)])
+        j = ch_names.index(pair)
+        data.append(raw._data[i] - raw._data[j])
+        locs.append((raw.info['chs'][i]['loc'][:3] +
+                     raw.info['chs'][j]['loc'][:3]) / 2)
         chs_used.append(ch)
         chs_used.append(pair)
         bipolar_names.append(f'{ch}-{pair}')
         if verbose:
             print(f'Bipolar referencing {ch} and {pair}')
     bipolar_info = mne.create_info(bipolar_names, raw.info['sfreq'], 'seeg')
+    for loc, ch in zip(locs, bipolar_info['chs']):
+        ch['loc'][:3] = loc
     return mne.io.RawArray(np.array(data), bipolar_info)
