@@ -1,4 +1,5 @@
 import numpy as np
+import mne
 
 RAW_DATA_DIR = '/home/alex/SwannLab/EMU_data'
 BIDS_ROOT = '/home/alex/SwannLab/EMU_data_BIDS'
@@ -60,3 +61,41 @@ def neighbor_reference(raw, tol=0.5, verbose=True):
     assert not np.isnan(data).any()
     raw._data = data
     return raw
+
+
+def bipolar_reference(raw, verbose=True):
+    """Reference raw data bipolar.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        The raw object.
+
+    Returns
+    -------
+    raw : mne.io.Raw
+        The re-referenced raw object.
+    """
+    raw.load_data()
+    ch_names = [name.replace(' ', '') for name in raw.ch_names]  # no spaces
+    bipolar_names = list()
+    data = list()
+    chs_used = list()
+    for i, ch in enumerate(ch_names):
+        if ch in chs_used:
+            continue
+        elec_name = ''.join([letter for letter in ch if
+                             not letter.isdigit()]).rstrip()
+        number = ''.join([letter for letter in ch if
+                          letter.isdigit()]).rstrip()
+        pair = f'{elec_name}{int(number) + 1}'
+        if pair in chs_used or pair not in ch_names:
+            continue
+        data.append(raw._data[i] - raw._data[ch_names.index(pair)])
+        chs_used.append(ch)
+        chs_used.append(pair)
+        bipolar_names.append(f'{ch}-{pair}')
+        if verbose:
+            print(f'Bipolar referencing {ch} and {pair}')
+    bipolar_info = mne.create_info(bipolar_names, raw.info['sfreq'], 'seeg')
+    return mne.io.RawArray(np.array(data), bipolar_info)

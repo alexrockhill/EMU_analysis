@@ -291,15 +291,16 @@ bins = np.linspace(0, 1 - binsize, int(1 / binsize))
 for i, sub in enumerate(subjects):
     ax, ax2 = axes[i]
     these_scores = scores[scores['sub'] == sub]
-    sig = [score for score in these_scores['event_scores']
-           if score > sig_thresh]
-    not_sig = [score for score in these_scores['event_scores']
-               if score <= sig_thresh]
-    ax.violinplot(sig + not_sig, [0], vert=False, showextrema=False)
-    y = swarm(sig, bins=bins) / 50
-    ax.scatter(sig, y, color='r', s=2, label='sig')
-    y = swarm(not_sig, bins=bins) / 50
-    ax.scatter(not_sig, y, color='b', s=2, label='not sig')
+    these_sig = [score for score in these_scores['event_scores']
+                 if score > sig_thresh]
+    these_not_sig = [score for score in these_scores['event_scores']
+                     if score <= sig_thresh]
+    ax.violinplot(these_sig + these_not_sig, [0],
+                  vert=False, showextrema=False)
+    y = swarm(these_sig, bins=bins) / 50
+    ax.scatter(these_sig, y, color='r', s=2, label='sig')
+    y = swarm(these_not_sig, bins=bins) / 50
+    ax.scatter(these_not_sig, y, color='b', s=2, label='not sig')
     ax.set_ylabel(r'$\bf{Subject' + r'\enspace' + str(sub) + '}$\nDensity')
     ax.axis([0.25, 1, -0.28, 0.28])
     # CSP plot

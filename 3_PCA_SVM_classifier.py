@@ -62,7 +62,7 @@ images = dict(event=dict(), null=dict())  # correlation coefficient images
 n_epochs = dict()  # number of epochs per subject
 for sub in subjects:
     path = mne_bids.BIDSPath(root=bids_root, subject=str(sub), task=task)
-    raw = mne_bids.read_raw_bids(path)
+    raw = mne_bids.read_raw_bids(path, verbose=False)
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
