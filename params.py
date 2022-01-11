@@ -104,4 +104,4 @@ def bipolar_reference(raw, verbose=True):
     bipolar_info = mne.create_info(bipolar_names, raw.info['sfreq'], 'seeg')
     for loc, ch in zip(locs, bipolar_info['chs']):
         ch['loc'][:3] = loc
-    return mne.io.RawArray(np.array(data), bipolar_info)
+    return mne.io.RawArray(np.array(data), bipolar_info, raw.first_samp)
