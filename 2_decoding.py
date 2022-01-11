@@ -64,12 +64,12 @@ for sub in subjects:
             fmin, fmax, n_jobs=1, fir_design='firwin',
             skip_by_annotation='edge', verbose=False)
         bl_epochs = mne.Epochs(raw_filter, events, event_id['Fixation'],
-                               baseline=None, preload=True,
+                               detrend=1, baseline=None, preload=True,
                                tmin=-2.5 - f_buffer, tmax=-0.5 + f_buffer,
                                verbose=False)
         # extra 0.001 to match number of samples
         epochs = mne.Epochs(
-            raw_filter, events, event_id['Response'],
+            raw_filter, events, event_id['Response'], detrend=1,
             tmin=-1 - f_buffer, tmax=1.001 + f_buffer,
             baseline=None, preload=True, verbose=False)
         y = le.fit_transform(np.concatenate([bl_epochs.events[:, 2],

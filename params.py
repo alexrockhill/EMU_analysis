@@ -63,13 +63,15 @@ def neighbor_reference(raw, tol=0.5, verbose=True):
     return raw
 
 
-def bipolar_reference(raw, verbose=True):
+def bipolar_reference(raw, dist_thresh=0.01, verbose=True):
     """Reference raw data bipolar.
 
     Parameters
     ----------
     raw : mne.io.Raw
         The raw object.
+    dist_thresh : float
+        The allowable distance for a bipolar reference, default 1 cm.
 
     Returns
     -------
@@ -81,23 +83,21 @@ def bipolar_reference(raw, verbose=True):
     bipolar_names = list()
     locs = list()
     data = list()
-    chs_used = list()
     for i, ch in enumerate(ch_names):
-        if ch in chs_used:
-            continue
         elec_name = ''.join([letter for letter in ch if
                              not letter.isdigit()]).rstrip()
         number = ''.join([letter for letter in ch if
                           letter.isdigit()]).rstrip()
         pair = f'{elec_name}{int(number) + 1}'
-        if pair in chs_used or pair not in ch_names:
+        if pair not in ch_names:
             continue
         j = ch_names.index(pair)
+        loc = raw.info['chs'][i]['loc'][:3]
+        loc2 = raw.info['chs'][j]['loc'][:3]
+        if np.linalg.norm(loc - loc2) > dist_thresh:
+            continue
         data.append(raw._data[i] - raw._data[j])
-        locs.append((raw.info['chs'][i]['loc'][:3] +
-                     raw.info['chs'][j]['loc'][:3]) / 2)
-        chs_used.append(ch)
-        chs_used.append(pair)
+        locs.append((loc + loc2) / 2)
         bipolar_names.append(f'{ch}-{pair}')
         if verbose:
             print(f'Bipolar referencing {ch} and {pair}')
