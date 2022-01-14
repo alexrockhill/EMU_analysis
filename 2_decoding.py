@@ -17,7 +17,6 @@ from params import BIDS_ROOT as bids_root
 from params import DATA_DIR as data_dir
 from params import SUBJECTS as subjects
 from params import TASK as task
-from params import bipolar_reference
 
 # decoding-specific parameters
 freqs = np.logspace(np.log(8), np.log(250), 50, base=np.e)
@@ -46,7 +45,7 @@ for sub in subjects:
     raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
              tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
     raw.load_data()
-    raw = bipolar_reference(raw)  # .set_eeg_reference('average')
+    raw.set_eeg_reference('average')
     # decoder analysis
     clf = make_pipeline(CSP(), LinearDiscriminantAnalysis())
     n_splits = 5  # how many folds to use for cross-validation

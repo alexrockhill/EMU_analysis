@@ -17,7 +17,6 @@ from params import TASK as task
 from params import FREQUENCIES as freqs
 from params import EVENTS as event_dict
 from params import N_COMPONENTS as n_components
-from params import bipolar_reference
 
 
 def plot_image(fig, ax, img, freqs, times, vmin=None, vmax=None,
@@ -62,7 +61,7 @@ images = dict(event=dict(), null=dict())  # correlation coefficient images
 n_epochs = dict()  # number of epochs per subject
 for sub in subjects:
     path = mne_bids.BIDSPath(root=bids_root, subject=str(sub), task=task)
-    raw = mne_bids.read_raw_bids(path, verbose=False)
+    raw = mne_bids.read_raw_bids(path)
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
@@ -74,11 +73,11 @@ for sub in subjects:
     raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
              tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
     raw.load_data()
-    raw = bipolar_reference(raw)  # raw.set_eeg_reference('average')
+    raw.set_eeg_reference('average')
     # plot evoked
     for name, (event, tmin, tmax) in event_dict.items():
         epochs = mne.Epochs(raw, events, event_id[event], preload=True,
-                            tmin=tmin, tmax=tmax, baseline=None)
+                            tmin=tmin, tmax=tmax, detrend=1, baseline=None)
         fig = epochs.average().plot(show=False)
         fig.savefig(op.join(plot_dir, f'sub-{sub}_event-{name}_evoked.png'))
         plt.close(fig)
