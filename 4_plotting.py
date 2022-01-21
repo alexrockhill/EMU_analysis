@@ -103,8 +103,8 @@ prop_thresh = 0.5
 areas = {'Pre-Movement Beta': (1, 25, 37, -0.4, -0.1),
          'Delta': (1, 1, 5, -0.5, 0.5),
          'Evoked Potential': (1, 0, 0, -0.5, 0.5),
-         'High-Beta Rebound': (1, 27, 40, 0, 0.25),
-         'Low-Beta Rebound': (1, 14, 23, 0.05, 0.25),
+         'Post-Movement High-Beta': (1, 27, 40, 0, 0.25),
+         'Post-Movement Low-Beta': (1, 14, 23, 0.05, 0.25),
          'Post-Movement Gamma': (1, 45, 160, 0.08, 0.23),
          'Pre-Movement Alpha': (0, 7, 14, -0.3, 0)}
 
@@ -274,70 +274,7 @@ print('Paired t-test p-value: {}'.format(
     stats.ttest_rel(scores['event_scores'], scores['null_scores'])[1]))
 
 
-# Figure 4: distribution of classification accuracies across
-# subjects compared to CSP.
-
-# decoding-specific parameters
-csp_freqs = np.logspace(np.log(8), np.log(250), 50, base=np.e)
-windows = np.linspace(0, 2, 11)
-windows = (windows[1:] + windows[:-1]) / 2  # take mean
-
-fig, axes = plt.subplots(len(subjects) // 2, 4, figsize=(12, 8))
-fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.08,
-                    hspace=0.2, wspace=0.3)
-axes = axes.reshape(len(subjects), 2)
-binsize = 0.005
-bins = np.linspace(0, 1 - binsize, int(1 / binsize))
-for i, sub in enumerate(subjects):
-    ax, ax2 = axes[i]
-    these_scores = scores[scores['sub'] == sub]
-    these_sig = [score for score in these_scores['event_scores']
-                 if score > sig_thresh]
-    these_not_sig = [score for score in these_scores['event_scores']
-                     if score <= sig_thresh]
-    ax.violinplot(these_sig + these_not_sig, [0],
-                  vert=False, showextrema=False)
-    y = swarm(these_sig, bins=bins) / 50
-    ax.scatter(these_sig, y, color='r', s=2, label='sig')
-    y = swarm(these_not_sig, bins=bins) / 50
-    ax.scatter(these_not_sig, y, color='b', s=2, label='not sig')
-    ax.set_ylabel(r'$\bf{Subject' + r'\enspace' + str(sub) + '}$\nDensity')
-    ax.axis([0.25, 1, -0.28, 0.28])
-    # CSP plot
-    tf_scores = np.load(op.join(
-        data_dir, 'derivatives', 'csp_decoding',
-        f'sub-{sub}_csp_tf_scores.npz'))['arr_0']
-    info = mne.io.read_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                                    f'sub-{sub}_task-{task}_info.fif'))
-    av_tfr = mne.time_frequency.AverageTFR(
-        mne.create_info(['freq'], info['sfreq']), tf_scores[np.newaxis, :],
-        windows, csp_freqs, 1)
-    av_tfr.plot([0], vmin=0.5, vmax=1, cmap=plt.cm.Reds, show=False, axes=ax2,
-                colorbar=i % 2 == 1)
-    if i % 2 == 0:  # adjust for not having colorbar
-        pos = ax2.get_position()
-        ax2.set_position((pos.x0, pos.y0, pos.width * 0.85, pos.height))
-    ax2.set_xticks([0, 0.5, 1, 1.5, 2])
-    ax2.set_xticklabels([-1, -0.5, 0, 0.5, 1])
-    ax2.set_yticks(csp_freqs[::6].round())
-    ax2.set_yticklabels(csp_freqs[::6].round().astype(int))
-    ax2.set_ylabel('Frequency (Hz)')
-    ax2.set_xlabel('')
-    if i < 2:
-        ax.set_title('SVM Accuracies')
-        ax2.set_title('CSP Decoding')
-    if i == len(subjects) - 1:
-        ax.legend(loc='lower right')
-    if i > len(subjects) - 3:
-        ax.set_xlabel('Test Accuracy')
-        ax2.set_xlabel('Time (s)')
-
-
-fig.suptitle('CSP-SVM Comparison by Subject')
-fig.savefig(op.join(fig_dir, f'svm_csp_comparison.png'), dpi=300)
-
-
-# Figure 5: Plots of electrodes with high classification accuracies
+# Figure 4: Plots of electrodes with high classification accuracies
 
 fig = plt.figure(figsize=(8, 6))
 gs = fig.add_gridspec(3, 4)
@@ -465,7 +402,7 @@ cax2.set_position((pos.x0, 0.1, 0.05, 0.2))
 fig.savefig(op.join(fig_dir, 'high_accuracy.png'), dpi=300)
 
 
-# Figure 6: Accuracy by label region of interest
+# Figure 5: Accuracy by label region of interest
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
 labels = set([
@@ -523,6 +460,69 @@ fig.tight_layout()
 fig.subplots_adjust(top=0.95, bottom=0.07)
 fig.savefig(op.join(fig_dir, 'label_accuracies.png'),
             facecolor=fig.get_facecolor(), dpi=300)
+
+
+# Figure 6: distribution of classification accuracies across
+# subjects compared to CSP.
+
+# decoding-specific parameters
+csp_freqs = np.logspace(np.log(8), np.log(250), 50, base=np.e)
+windows = np.linspace(0, 2, 11)
+windows = (windows[1:] + windows[:-1]) / 2  # take mean
+
+fig, axes = plt.subplots(len(subjects) // 2, 4, figsize=(12, 8))
+fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.08,
+                    hspace=0.2, wspace=0.3)
+axes = axes.reshape(len(subjects), 2)
+binsize = 0.005
+bins = np.linspace(0, 1 - binsize, int(1 / binsize))
+for i, sub in enumerate(subjects):
+    ax, ax2 = axes[i]
+    these_scores = scores[scores['sub'] == sub]
+    these_sig = [score for score in these_scores['event_scores']
+                 if score > sig_thresh]
+    these_not_sig = [score for score in these_scores['event_scores']
+                     if score <= sig_thresh]
+    ax.violinplot(these_sig + these_not_sig, [0],
+                  vert=False, showextrema=False)
+    y = swarm(these_sig, bins=bins) / 50
+    ax.scatter(these_sig, y, color='r', s=2, label='sig')
+    y = swarm(these_not_sig, bins=bins) / 50
+    ax.scatter(these_not_sig, y, color='b', s=2, label='not sig')
+    ax.set_ylabel(r'$\bf{Subject' + r'\enspace' + str(sub) + '}$\nDensity')
+    ax.axis([0.25, 1, -0.28, 0.28])
+    # CSP plot
+    tf_scores = np.load(op.join(
+        data_dir, 'derivatives', 'csp_decoding',
+        f'sub-{sub}_csp_tf_scores.npz'))['arr_0']
+    info = mne.io.read_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
+                                    f'sub-{sub}_task-{task}_info.fif'))
+    av_tfr = mne.time_frequency.AverageTFR(
+        mne.create_info(['freq'], info['sfreq']), tf_scores[np.newaxis, :],
+        windows, csp_freqs, 1)
+    av_tfr.plot([0], vmin=0.5, vmax=1, cmap=plt.cm.Reds, show=False, axes=ax2,
+                colorbar=i % 2 == 1)
+    if i % 2 == 0:  # adjust for not having colorbar
+        pos = ax2.get_position()
+        ax2.set_position((pos.x0, pos.y0, pos.width * 0.85, pos.height))
+    ax2.set_xticks([0, 0.5, 1, 1.5, 2])
+    ax2.set_xticklabels([-1, -0.5, 0, 0.5, 1])
+    ax2.set_yticks(csp_freqs[::6].round())
+    ax2.set_yticklabels(csp_freqs[::6].round().astype(int))
+    ax2.set_ylabel('Frequency (Hz)')
+    ax2.set_xlabel('')
+    if i < 2:
+        ax.set_title('SVM Accuracies')
+        ax2.set_title('CSP Decoding')
+    if i == len(subjects) - 1:
+        ax.legend(loc='lower right')
+    if i > len(subjects) - 3:
+        ax.set_xlabel('Test Accuracy')
+        ax2.set_xlabel('Time (s)')
+
+
+fig.suptitle('CSP-SVM Comparison by Subject')
+fig.savefig(op.join(fig_dir, f'svm_csp_comparison.png'), dpi=300)
 
 # Figure 7: Best contacts
 
@@ -799,11 +799,11 @@ fig.text(0.05, 0.925, 'Pre-Movement\nBeta Decrease', ha='left', color='w')
 these_labels, these_colors = get_labels('Low-Beta Rebound', 1)
 mne.viz.plot_channel_labels_circle(
     labels=these_labels, colors=these_colors, subplot='222', **circle_kwargs)
-fig.text(0.45, 0.9275, 'Low-Beta\nRebound', ha='left', color='w')
+fig.text(0.45, 0.9275, 'Post-Movement\nLow-Beta', ha='left', color='w')
 these_labels, these_colors = get_labels('High-Beta Rebound', 1)
 mne.viz.plot_channel_labels_circle(
     labels=these_labels, colors=these_colors, subplot='223', **circle_kwargs)
-fig.text(0.05, 0.45, 'High-Beta\nRebound', ha='left', color='w')
+fig.text(0.05, 0.45, 'Post-Movement\nHigh-Beta', ha='left', color='w')
 these_labels, these_colors = get_labels('Post-Movement Gamma', 1)
 mne.viz.plot_channel_labels_circle(
     labels=these_labels, colors=these_colors, subplot='224', **circle_kwargs)
