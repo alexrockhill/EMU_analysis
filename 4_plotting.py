@@ -709,12 +709,16 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
 
 fig.tight_layout()
 fig.subplots_adjust(hspace=0, wspace=0, top=0.97, bottom=0.07, left=0.16)
-axes[0, 0].set_ylabel('Pre-Movement\nBeta')
+for axis, name in zip(axes[:, 0], areas):
+    axis.set_ylabel(name.replace(' ', '\n'))
+
+
+'''axes[0, 0].set_ylabel('Pre-Movement\nBeta')
 axes[2, 0].set_ylabel('Evoked\nPotential')
-axes[3, 0].set_ylabel('High-Beta\nRebound')
-axes[4, 0].set_ylabel('Low-Beta\nRebound')
+axes[3, 0].set_ylabel('Post-Movement\nHigh-Beta')
+axes[4, 0].set_ylabel('Post-Movement\nLow-Beta')
 axes[5, 0].set_ylabel('Post-Movement\nGamma')
-axes[6, 0].set_ylabel('Pre-\nMovement\nAlpha')
+axes[6, 0].set_ylabel('Pre-Movement\nAlpha')'''
 
 # bigger brains
 for i, axes2 in enumerate(axes[:, [2, 4]].T):
