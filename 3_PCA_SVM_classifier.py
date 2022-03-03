@@ -145,10 +145,13 @@ for sub in subjects:
             mne.stats.permutation_cluster_test(
                 [tfr_data['baseline']['data'], tfr_data['event']['data']],
                 n_permutations=1024, threshold=threshold, out_type='mask')
+        power_sign = np.sign(tfr_data['event']['data'].mean(axis=0) -
+                             tfr_data['baseline']['data'].mean(axis=0))
         T_corrected = np.nan * np.ones_like(T_obs)
         for c, p_val in zip(ch_clusters, cluster_p_values):
             if p_val <= alpha:
-                T_corrected[c] = T_obs[c]
+                T_corrected[c] = T_obs[c] * power_sign[c]
+        print(np.nanmin(T_corrected), np.nanmax(T_corrected))
         clusters[f'sub-{sub}_ch-{elec_name}{number}'] = T_corrected
         # compare baseline to event as well as null to baseline
         for (bl_event, event) in [('baseline', 'event'), ('baseline', 'null')]:

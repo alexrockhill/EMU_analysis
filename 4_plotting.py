@@ -50,13 +50,23 @@ ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
 # get svm information
 source_dir = op.join(data_dir, 'derivatives', 'pca_svm_classifier')
 scores = pd.read_csv(op.join(source_dir, 'scores.tsv'), sep='\t')
+scores_rbf = pd.read_csv(op.join(source_dir, 'scores_rbf.tsv'), sep='\t')
 
 # remove nans for positions and scores
 idx = ~np.logical_or(np.logical_or(np.isnan(
     ch_pos['x']), np.isnan(ch_pos['y'])), np.isnan(ch_pos['z']))
 ch_pos = ch_pos[idx].reset_index()
 scores = scores[idx].reset_index()
+#
+scores_rbf = scores_rbf[idx].reset_index()
 
+# load cluster permutation results
+with np.load(op.join(data_dir, 'derivatives', 'cluster_perm',
+                     'clusters.npz')) as clusters:
+    clusters = {k: v for k, v in clusters.items()}
+
+
+# load SVM images
 with np.load(op.join(source_dir, 'event_images.npz')) as images:
     images = {k: v for k, v in images.items()}
 
@@ -74,6 +84,10 @@ not_sig = [i for i, score in enumerate(scores['event_scores'])
            if score <= sig_thresh]
 sig = [i for i, score in enumerate(scores['event_scores'])
        if score > sig_thresh]
+not_sig_rbf = [i for i, score in enumerate(scores_rbf['event_scores'])
+               if score <= sig_thresh]
+sig_rbf = [i for i, score in enumerate(scores_rbf['event_scores'])
+           if score > sig_thresh]
 
 # compute null distribution thresholds per subject and per image
 image_thresh = np.quantile(
@@ -88,14 +102,17 @@ for sub, elec_name, number, score in zip(
         image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
         feature_maps[0] += abs(image) > image_thresh  # count
         feature_maps[1] += image > image_thresh
-        feature_maps[2] += abs(image)
-        feature_maps[3] += (abs(image) > image_thresh) * score
+
+# cluster feature maps
+for name, ch_cluster in clusters.items():
+    feature_maps[2] += ~np.isnan(ch_cluster)
+    feature_maps[3] += ~np.isnan(ch_cluster) * ch_cluster > 0
 
 
 # normalize
 feature_maps[1] /= feature_maps[0]  # scale by count
-feature_maps[3] /= feature_maps[0]  # scale by count
 feature_maps[0] /= feature_maps[0].max()
+feature_maps[3] /= feature_maps[2]  # scale by count
 feature_maps[2] /= feature_maps[2].max()
 
 # time-frequency areas of interest
@@ -246,9 +263,9 @@ for ax in axes[1::2].flatten():
 fig.savefig(op.join(fig_dir, 'coverage.png'), dpi=300)
 
 
-# Figure 3: histogram of classification accuracies with
-# binomial null distribution of the number of epochs
-# get the number of epochs for each
+# Figure 3: histogram of classification accuracies
+#
+# Radial basis function scores not shown, almost exactly the same
 
 binsize = 0.01
 bins = np.linspace(binsize, 1, int(1 / binsize)) - binsize / 2
@@ -258,10 +275,16 @@ ax.hist([scores['event_scores'][i] for i in not_sig], bins=bins,
         alpha=0.5, color='b', density=True, label='not signficant')
 ax.hist([scores['event_scores'][i] for i in sig], bins=bins,
         alpha=0.5, color='r', density=True, label='significant')
+ax.hist([scores_rbf['event_scores'][i] for i in not_sig_rbf], bins=bins,
+        alpha=0.5, color=(0, 0, 0.6), density=True, label='not signficant')
+ax.hist([scores_rbf['event_scores'][i] for i in sig_rbf], bins=bins,
+        alpha=0.5, color=(0.6, 0, 0), density=True, label='significant')
 ax.hist(scores['null_scores'], bins=bins, alpha=0.5, color='gray',
         density=True, label='null')
 y_bounds = ax.get_ylim()
 ax.plot([np.mean(scores['event_scores'])] * 2, y_bounds, color='black')
+ax.plot([np.mean(scores_rbf['event_scores'])] * 2, y_bounds,
+        color=(0.6, 0.6, 0.6))
 ax.plot([np.mean(scores['null_scores'])] * 2, y_bounds, color='gray')
 ax.set_xlim([0.25, 1])
 ax.set_xlabel('Test Accuracy')
@@ -712,13 +735,6 @@ fig.subplots_adjust(hspace=0, wspace=0, top=0.97, bottom=0.07, left=0.16)
 for axis, name in zip(axes[:, 0], areas):
     axis.set_ylabel(name.replace(' ', '\n'))
 
-
-'''axes[0, 0].set_ylabel('Pre-Movement\nBeta')
-axes[2, 0].set_ylabel('Evoked\nPotential')
-axes[3, 0].set_ylabel('Post-Movement\nHigh-Beta')
-axes[4, 0].set_ylabel('Post-Movement\nLow-Beta')
-axes[5, 0].set_ylabel('Post-Movement\nGamma')
-axes[6, 0].set_ylabel('Pre-Movement\nAlpha')'''
 
 # bigger brains
 for i, axes2 in enumerate(axes[:, [2, 4]].T):
