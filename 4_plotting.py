@@ -2,6 +2,7 @@ import os
 import os.path as op
 import numpy as np
 import pandas as pd
+from collections import OrderedDict
 
 import mne
 import matplotlib.pyplot as plt
@@ -118,6 +119,13 @@ areas = {'Pre-Movement Beta': (1, 25, 37, -0.4, -0.1),
          'Post-Movement Gamma': (1, 45, 160, 0.08, 0.23),
          'Pre-Movement Alpha': (0, 7, 14, -0.3, 0)}
 
+area_directions = {'Pre-Movement Beta': (-1,), 'Delta': (1,),
+                   'Evoked Potential': (-1, 1),
+                   'Post-Movement High-Beta': (1,),
+                   'Post-Movement Low-Beta': (1,),
+                   'Post-Movement Gamma': (1,),
+                   'Pre-Movement Alpha': (-1, 1)}
+
 
 area_contacts = {area: dict() for area in areas}
 for name, image in images.items():
@@ -139,6 +147,21 @@ for name, image in images.items():
                          slice(tmin_idx, tmax_idx + 1)]
         area_contacts[area][(int(sub), elec_name, int(number))] = \
             this_area.sum() / this_area.size
+
+
+def format_label(label, combine_hemi=False):
+    label = label.lower()
+    if 'ctx-' in label:
+        label = label.replace('ctx-', '') + ' Cortex'
+    if combine_hemi:
+        label = label.replace('lh-', '').replace('rh-', '').replace(
+            'left-', '').replace('right-', '')
+    else:
+        if 'lh-' in label or 'left-' in label:
+            label = 'Left ' + label.replace('lh-', '').replace('left-', '')
+        if 'rh-' in label or 'right-' in label:
+            label = 'Right ' + label.replace('rh-', '').replace('right-', '')
+    return label.replace('-', ' ').title()
 
 
 # Plots
@@ -443,12 +466,12 @@ for idx, label in enumerate(labels):
 
 ax.axis([0.25, 1, -0.75, len(labels) - 0.25])
 ax.set_yticks(range(len(label_scores)))
-ax.set_yticklabels(labels)
+ax.set_yticklabels([format_label(label) for label in labels])
 for tick, label in zip(ax.get_yticklabels(), labels):
     color = colors[label][:3] / 255
-    tick.set_color('w' if color.max() < 0.6 or color.mean() < 0.35
-                   else 'black')
-    # (color.mean() < 0.5 and color.std() < 0.15) 
+    tick.set_color('w' if color.max() < 0.6 or
+                   (color[2] > 0.6 and color.mean() < 0.5)
+                   else 'black')  # blue is dark
     tick.set_fontsize(8)
     tick.set_path_effects([patheffects.withStroke(
         linewidth=5, foreground=color)])
@@ -547,7 +570,7 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
                    'white-matter', 'wm-')
 best_contact_idx = np.argsort(scores['event_scores'])[-3:][::-1]
 
-views = [dict(azimuth=250, elevation=60, distance=0.25),
+views = [dict(azimuth=35, elevation=70, distance=0.25),
          dict(azimuth=60, elevation=80, distance=0.25),
          dict(azimuth=40, elevation=60, distance=0.3)]
 
@@ -585,8 +608,8 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
     locs = np.array(list(montage.get_positions()['ch_pos'].values()))
     # spectrogram plot
     image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
-    mask = abs(image) > image_thresh
-    # mask = binary_opening(binary_closing(mask))  # remove noise
+    cluster = clusters[f'sub-{sub}_ch-{elec_name}{int(number)}']
+    mask = ~np.isnan(cluster)
     X, Y = np.meshgrid(range(image.shape[1]), range(image.shape[0]))
     img = ax.imshow(image, aspect='auto', vmin=-0.05, vmax=0.05,
                     cmap='viridis')
@@ -599,7 +622,7 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
     ax.invert_yaxis()
     fig.colorbar(img, ax=ax)
     # anatomy plot
-    brain = mne.viz.Brain(f'sub-{sub}', **dict(brain_kwargs, alpha=0.03))
+    brain = mne.viz.Brain(f'sub-{sub}', **dict(brain_kwargs, alpha=0.25))
     for loc, name in zip(locs, montage.ch_names):
         is_best = int(name.replace(elec_name, '').replace(' ', '')) == number
         brain._renderer.sphere(loc, 'black' if is_best else 'gray', 0.005)
@@ -612,7 +635,7 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
     ax2.imshow(brain.screenshot())
     for label in labels:  # empty plots for legend handling
         ax2.scatter([np.nan], [np.nan], color=colors[label][:3] / 255,
-                    marker='s', label=label)
+                    marker='s', label=format_label(label))
     ax2.legend(loc='lower left', fontsize='xx-small')
     brain.close()
 
@@ -756,13 +779,13 @@ fig.savefig(op.join(fig_dir, 'feature_anatomy.png'), dpi=300)
 
 # Figure 10: Anatomical Locations of Spectral Features
 
-# plot connectivity wheels for beta decrease, high and low beta rebound and
-# gamma increase
+# plot the anatomical locations of each of the time-frequency modulations
+# of interest
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
-                   'white-matter', 'wm-', 'cc_', 'cerebellum')
+                   'hypointensities')
 
-labels = dict()
-for sub in subjects:
+label_dict = dict()
+for sub in subjects:  # first, find associated labels
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
@@ -773,55 +796,49 @@ for sub in subjects:
     sub_labels = mne.get_montage_volume_labels(
         montage, f'sub-{sub}', subjects_dir=subjects_dir,
         aseg=aseg, dist=3)[0]
-    for ch, these_labels in sub_labels.items():
-        ch = ch.replace(' ', '')
-        labels[f'sub-{sub}_ch-{ch}'] = \
-            [label for label in these_labels if not any(
-                [kw in label.lower() for kw in ignore_keywords])]
+    sub_labels = {name.replace(' ', ''): lbls
+                  for name, lbls in sub_labels.items()}
+    # then, go through each area and direction of interest
+    for name, directions in area_directions.items():
+        for direction in directions:
+            d_name = u'\u2B06 ' + name if direction == 1 else u'\u2B07 ' + name
+            # finally, go through the area proportions for each electrode and
+            # match them up
+            for (sub2, elec_name, number), prop in area_contacts[area].items():
+                if sub != sub2:
+                    continue
+                if (direction == 1 and prop > prop_thresh) or \
+                        (direction == -1 and prop < -prop_thresh):
+                    these_labels = [label for label in
+                                    sub_labels[f'{elec_name}{number}']
+                                    if not any([kw in label.lower() for
+                                                kw in ignore_keywords])]
+                    for label in these_labels:
+                        if label in label_dict:
+                            label_dict[label].add(d_name)
+                        else:
+                            label_dict[label] = set([d_name])
+                    '''if d_name in label_dict:
+                        label_dict[d_name] = \
+                            label_dict[d_name].union(these_labels)
+                    else:
+                        label_dict[d_name] = set(these_labels)'''
 
 
-def format_label(label):
-    return label.lower().replace('ctx-', '').replace('lh-', '').replace(
-        'rh-', '').replace('left-', '').replace('right-', '').title()
+# these_colors = {format_label(label): colors[label][:3] / 255
+#                 for labels in label_dict.values() for label in labels}
+all_labels = set([label for labels in label_dict.values()
+                  for label in labels])
+all_labels = sorted(list(all_labels))
 
+label_dict = {sorted([format_label(label) for label in labels]): name
+              for name, labels in label_dict.items()}
 
-def get_labels(area, direction):
-    these_labels = dict()
-    for (sub, elec_name, number), prop in area_contacts[area].items():
-        ch_labels = labels[f'sub-{sub}_ch-{elec_name}{number}']
-        if direction == 1 and prop > prop_thresh:
-            these_labels[f'Sub {sub} {elec_name}{number}'] = ch_labels
-        if direction == -1 and prop < -prop_thresh:
-            these_labels[f'Sub {sub} {elec_name}{number}'] = ch_labels
-    label_names = set([label for labels in these_labels.values()
-                       for label in labels])
-    these_colors = {name: colors[name][:3] / 255 for name in label_names}
-    these_labels = {name: [format_label(label) for label in lbls]
-                    for name, lbls in these_labels.items()}
-    these_colors = {format_label(label): color for label, color in
-                    these_colors.items()}
-    return these_labels, these_colors
-
-
-fig, axes = plt.subplots(2, 2, figsize=(8, 8), facecolor='black')
+fig, ax = plt.subplots(figsize=(8, 8), facecolor='black')
 circle_kwargs = dict(fig=fig, show=False, linewidth=1)
 
-these_labels, these_colors = get_labels('Pre-Movement Beta', -1)
 mne.viz.plot_channel_labels_circle(
-    labels=these_labels, colors=these_colors, subplot='221', **circle_kwargs)
-fig.text(0.05, 0.925, 'Pre-Movement\nBeta Decrease', ha='left', color='w')
-these_labels, these_colors = get_labels('Low-Beta Rebound', 1)
-mne.viz.plot_channel_labels_circle(
-    labels=these_labels, colors=these_colors, subplot='222', **circle_kwargs)
-fig.text(0.45, 0.9275, 'Post-Movement\nLow-Beta', ha='left', color='w')
-these_labels, these_colors = get_labels('High-Beta Rebound', 1)
-mne.viz.plot_channel_labels_circle(
-    labels=these_labels, colors=these_colors, subplot='223', **circle_kwargs)
-fig.text(0.05, 0.45, 'Post-Movement\nHigh-Beta', ha='left', color='w')
-these_labels, these_colors = get_labels('Post-Movement Gamma', 1)
-mne.viz.plot_channel_labels_circle(
-    labels=these_labels, colors=these_colors, subplot='224', **circle_kwargs)
-fig.text(0.45, 0.45, 'Post-Movement\nGamma Increase', ha='left', color='w')
+    labels=label_dict, colors=these_colors, **circle_kwargs)
 
 fig.tight_layout()
 fig.subplots_adjust(top=0.88)
