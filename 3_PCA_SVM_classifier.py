@@ -60,7 +60,6 @@ electrode_name = list()  # name of the electrode shaft
 contact_number = list()  # number of contact
 
 scores = dict(event=list(), null=list())  # scores per electrode
-scores_rbf = dict(event=list(), null=list())
 images = dict(event=dict(), null=dict())  # correlation coefficient images
 
 clusters = dict()
@@ -142,15 +141,13 @@ for sub in subjects:
                                   sfreq=sfreq, freqs=[0] + list(freqs))
         # cluster permutation statistics
         T_obs, ch_clusters, cluster_p_values, _ = \
-            mne.stats.permutation_cluster_test(
-                [tfr_data['baseline']['data'], tfr_data['event']['data']],
+            mne.stats.permutation_cluster_1samp_test(
+                tfr_data['event']['data'] - tfr_data['baseline']['data'],
                 n_permutations=1024, threshold=threshold, out_type='mask')
-        power_sign = np.sign(tfr_data['event']['data'].mean(axis=0) -
-                             tfr_data['baseline']['data'].mean(axis=0))
         T_corrected = np.nan * np.ones_like(T_obs)
         for c, p_val in zip(ch_clusters, cluster_p_values):
             if p_val <= alpha:
-                T_corrected[c] = T_obs[c] * power_sign[c]
+                T_corrected[c] = T_obs[c]
         print(np.nanmin(T_corrected), np.nanmax(T_corrected))
         clusters[f'sub-{sub}_ch-{elec_name}{number}'] = T_corrected
         # compare baseline to event as well as null to baseline
@@ -172,12 +169,6 @@ for sub in subjects:
             classifier.fit(X_train_pca, y_train)
             score = classifier.score(X_test_pca, y_test)
             scores[event].append(score)
-            # rbf SVM
-            classifier_rbf = SVC(kernel='rbf')
-            np.random.seed(99)
-            classifier_rbf.fit(X_train_pca, y_train)
-            score_rbf = classifier_rbf.score(X_test_pca, y_test)
-            scores_rbf[event].append(score_rbf)
             if str(sub) in n_epochs:
                 assert n_epochs[str(sub)] == y_test.size
             else:
@@ -284,11 +275,5 @@ score_data = pd.DataFrame(dict(sub=subject, elec_name=electrode_name,
                                event_scores=scores['event'],
                                null_scores=scores['null']))
 score_data.to_csv(op.join(out_dir, 'scores.tsv'), sep='\t', index=False)
-score_data_rbf = pd.DataFrame(dict(sub=subject, elec_name=electrode_name,
-                                   number=contact_number,
-                                   event_scores=scores_rbf['event'],
-                                   null_scores=scores_rbf['null']))
-score_data_rbf.to_csv(op.join(out_dir, 'scores_rbf.tsv'),
-                      sep='\t', index=False)
 np.savez_compressed(op.join(out_dir, 'event_images.npz'), **images['event'])
 np.savez_compressed(op.join(out_dir, 'null_images.npz'), **images['null'])

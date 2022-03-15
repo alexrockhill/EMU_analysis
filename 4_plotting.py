@@ -5,6 +5,7 @@ import pandas as pd
 
 import mne
 import matplotlib.pyplot as plt
+from matplotlib import patheffects
 
 from scipy import stats
 
@@ -50,15 +51,11 @@ ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
 # get svm information
 source_dir = op.join(data_dir, 'derivatives', 'pca_svm_classifier')
 scores = pd.read_csv(op.join(source_dir, 'scores.tsv'), sep='\t')
-scores_rbf = pd.read_csv(op.join(source_dir, 'scores_rbf.tsv'), sep='\t')
 
 # remove nans for positions and scores
 idx = ~np.logical_or(np.logical_or(np.isnan(
     ch_pos['x']), np.isnan(ch_pos['y'])), np.isnan(ch_pos['z']))
 ch_pos = ch_pos[idx].reset_index()
-scores = scores[idx].reset_index()
-#
-scores_rbf = scores_rbf[idx].reset_index()
 
 # load cluster permutation results
 with np.load(op.join(data_dir, 'derivatives', 'cluster_perm',
@@ -84,10 +81,6 @@ not_sig = [i for i, score in enumerate(scores['event_scores'])
            if score <= sig_thresh]
 sig = [i for i, score in enumerate(scores['event_scores'])
        if score > sig_thresh]
-not_sig_rbf = [i for i, score in enumerate(scores_rbf['event_scores'])
-               if score <= sig_thresh]
-sig_rbf = [i for i, score in enumerate(scores_rbf['event_scores'])
-           if score > sig_thresh]
 
 # compute null distribution thresholds per subject and per image
 image_thresh = np.quantile(
@@ -275,16 +268,10 @@ ax.hist([scores['event_scores'][i] for i in not_sig], bins=bins,
         alpha=0.5, color='b', density=True, label='not signficant')
 ax.hist([scores['event_scores'][i] for i in sig], bins=bins,
         alpha=0.5, color='r', density=True, label='significant')
-ax.hist([scores_rbf['event_scores'][i] for i in not_sig_rbf], bins=bins,
-        alpha=0.5, color=(0, 0, 0.6), density=True, label='not signficant')
-ax.hist([scores_rbf['event_scores'][i] for i in sig_rbf], bins=bins,
-        alpha=0.5, color=(0.6, 0, 0), density=True, label='significant')
 ax.hist(scores['null_scores'], bins=bins, alpha=0.5, color='gray',
         density=True, label='null')
 y_bounds = ax.get_ylim()
 ax.plot([np.mean(scores['event_scores'])] * 2, y_bounds, color='black')
-ax.plot([np.mean(scores_rbf['event_scores'])] * 2, y_bounds,
-        color=(0.6, 0.6, 0.6))
 ax.plot([np.mean(scores['null_scores'])] * 2, y_bounds, color='gray')
 ax.set_xlim([0.25, 1])
 ax.set_xlabel('Test Accuracy')
@@ -445,10 +432,12 @@ for idx, label in enumerate(labels):
             these_scores = [score for i, (score, labels, sub) in enumerate(zip(
                 scores['event_scores'], ch_pos['label'], ch_pos['sub']))
                 if label in labels and i in idxs and (lh == (sub in lh_sub))]
+            color = colors[label][:3] / 255
+            if color.mean() > 0.9:
+                color *= 0.75  # gray out white
             # triangle if left hand used, hollow if not significant
             ax.scatter(these_scores, [idx] * len(these_scores),
-                       color=colors[label][:3] / 255,
-                       marker='^' if lh else None,
+                       color=color, marker='^' if lh else None,
                        facecolors=None if name == 'sig' else 'none')
 
 
@@ -456,8 +445,13 @@ ax.axis([0.25, 1, -0.75, len(labels) - 0.25])
 ax.set_yticks(range(len(label_scores)))
 ax.set_yticklabels(labels)
 for tick, label in zip(ax.get_yticklabels(), labels):
-    tick.set_color(colors[label][:3] / 255)
+    color = colors[label][:3] / 255
+    tick.set_color('w' if color.max() < 0.6 or color.mean() < 0.35
+                   else 'black')
+    # (color.mean() < 0.5 and color.std() < 0.15) 
     tick.set_fontsize(8)
+    tick.set_path_effects([patheffects.withStroke(
+        linewidth=5, foreground=color)])
 
 
 for tick in ax.get_xticklabels():
@@ -638,8 +632,8 @@ for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
     ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
                         enumerate(np.array(freqs).round(
                         ).astype(int))], fontsize=8)
-    c = ax.imshow(feature_map, vmin={0: 0, 1: 0, 2: 0, 3: 0.5}[i],
-                  vmax=1, cmap='viridis', aspect='auto')
+    c = ax.imshow(feature_map, vmin=0, vmax=1, cmap='viridis',
+                  aspect='auto')
     ax.invert_yaxis()
     fig.colorbar(c, ax=ax)
 
@@ -649,12 +643,12 @@ axes[0].set_ylabel('Frequency (Hz)')
 fig.text(0.04, 0.95, 'a', fontsize=24)
 axes[1].set_title('Proportion of Positive\nSignificant Coefficients')
 fig.text(0.52, 0.95, 'b', fontsize=24)
-axes[2].set_title('Average Relative Magnitude\nof Coefficients')
+axes[2].set_title('Relative Abundance of\nSignificant Clusters')
 fig.text(0.04, 0.47, 'c', fontsize=24)
 axes[2].set_xlabel('Time (s)')
 axes[2].set_ylabel('Frequency (Hz)')
+axes[3].set_title('Proportion of Positive\nSignificant Clusters')
 axes[3].set_xlabel('Time (s)')
-axes[3].set_title('Average Accuracy by\nTime-Frequency')
 fig.text(0.52, 0.47, 'd', fontsize=24)
 
 fig.tight_layout()
