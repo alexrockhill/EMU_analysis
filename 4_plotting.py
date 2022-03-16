@@ -814,31 +814,45 @@ for sub in subjects:  # first, find associated labels
                                     if not any([kw in label.lower() for
                                                 kw in ignore_keywords])]
                     for label in these_labels:
-                        if label in label_dict:
-                            label_dict[label].add(d_name)
+                        label = format_label(label, combine_hemi=True)
+                        if d_name in label_dict:
+                            label_dict[d_name].add(label)
                         else:
-                            label_dict[label] = set([d_name])
-                    '''if d_name in label_dict:
-                        label_dict[d_name] = \
-                            label_dict[d_name].union(these_labels)
-                    else:
-                        label_dict[d_name] = set(these_labels)'''
+                            label_dict[d_name] = set([label])
 
 
-# these_colors = {format_label(label): colors[label][:3] / 255
-#                 for labels in label_dict.values() for label in labels}
-all_labels = set([label for labels in label_dict.values()
-                  for label in labels])
-all_labels = sorted(list(all_labels))
+cmap = plt.get_cmap('Set1')
+these_colors = {name: cmap(i) for i, name in
+                enumerate(set([name for names in label_dict.values()
+                               for name in names]))}
 
-label_dict = {sorted([format_label(label) for label in labels]): name
-              for name, labels in label_dict.items()}
 
-fig, ax = plt.subplots(figsize=(8, 8), facecolor='black')
+def append_group(kw):
+    """Append groups of labels by area."""
+    for label in sorted(label_dict):
+        if kw in label.lower() and label not in labels:
+            labels[label] = label_dict[label]
+
+
+labels = OrderedDict()
+# append by area
+append_group('white')  # first white matter
+append_group('front')
+append_group('opercularis')
+append_group('central')
+append_group('parietal')
+append_group('marginal')
+append_group('precuneus')
+append_group('temp')
+append_group('insula')
+append_group('cortex')
+append_group('')  # subortical
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 8), facecolor='black')
 circle_kwargs = dict(fig=fig, show=False, linewidth=1)
 
 mne.viz.plot_channel_labels_circle(
-    labels=label_dict, colors=these_colors, **circle_kwargs)
+    labels=labels, colors=these_colors, subplot='111', **circle_kwargs)
 
 fig.tight_layout()
 fig.subplots_adjust(top=0.88)
