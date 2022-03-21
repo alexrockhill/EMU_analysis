@@ -1,3 +1,7 @@
+'''
+The average magnitude of significant coefficients was also plotted (Figure 8c) to determine the relative strength of significant correlations. In Figure 8a, coefficients that were much larger than the significance threshold were counted the same as those that were closer to the threshold, whereas in Figure 8c large magnitudes brought up the average. The patterns were similar between Figure 8a and Figure 8c; coefficients for time-frequency points that were more abundant were also larger on average. In addition, the primary movement-related oscillatory patterns (pre-movement beta desynchronization, beta rebound, post-movement gamma power increase and alpha power modulation pre-movement) had larger magnitude coefficients. Finally, the average accuracy of each significant coefficient is plotted (Figure 8d). Interestingly, there is not a strong pattern where specific time-frequency points, when they are large enough to be significant, predict higher classification accuracies.
+'''
+
 for i in ch_pos.index:
     sub = ch_pos['sub'][i]
     info = mne.io.read_info(op.join(

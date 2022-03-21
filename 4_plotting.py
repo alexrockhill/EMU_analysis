@@ -21,9 +21,6 @@ from params import ALPHA as alpha
 from params import LEFT_HANDED_SUBJECTS as lh_sub
 from params import FREQUENCIES as freqs
 
-# this is a modification of the MNE function for our purposes
-from circle import _plot_connectivity_circle
-
 freqs = np.array([0] + list(freqs))  # add evoked
 
 
@@ -917,7 +914,7 @@ for ax, name in zip(axes.flatten(), names):
     node_colors = [name_colors[names.index(name)]] + \
         [label_colors[label] for label in labels]
 
-    _plot_connectivity_circle(
+    mne.viz.circle._plot_connectivity_circle(
         con, [''] * len(node_names), node_angles=node_angles, title=name,
         node_colors=node_colors, node_height=4,
         vmin=0, vmax=1, colormap=label_cmap,
@@ -941,7 +938,7 @@ for ax in axes[3:, :2].flatten():
     ax.remove()  # remove small axes
 ax = fig.add_subplot(gs[3:, :2], polar=True)  # add back a big axis
 pos = ax.get_position()
-_plot_connectivity_circle(
+mne.viz.circle._plot_connectivity_circle(
     np.zeros(con.shape) * np.nan, [''] + labels, node_angles=node_angles,
     node_colors=node_colors, node_height=4, vmin=0, vmax=1, fontsize_names=8,
     colormap=label_cmap, textcolor='white', colorbar=False, linewidth=1,

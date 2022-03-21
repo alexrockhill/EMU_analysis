@@ -1,7 +1,36 @@
-# Note, this was run prior to the BIDS formatted data so this will
-# not be executable for a reproduction of the analysis as the
-# data without events found is not shared
-# You will need to run ``pip install pd-parser`` for this to work
+# This script shares the code that was run to generate the BIDS formatted
+# data. It is not be executable for a reproduction of the analysis as the
+# data without events found is not shared but may be helpful for converting
+# other data.
+#
+# You will need to run ``pip install pd-parser`` for this to work.
+
+'''
+
+Procedure for importing data/converting to BIDS
+1. Convert the .mat data file to a tsv using slowfast_mat2csv.m or
+   another task-specific conversion
+2. Use ``pd-parser`` to find the events and save to BIDS.
+3. Convert MRI and CT from DICOM to nii.gz
+    Install from https://people.cas.sc.edu/rorden/mricron/install.html
+    and add to path.
+
+    example bash commands:
+    cd EMU_data/sub-1_raw
+    mkdir MRI_nii
+    dcm2niix -o ./MRI_nii -z y ./MRI/
+    // you might have to look though them all if you don't know which is good
+    freeview MRI_nii/T1.nii.gz
+    // add T2/FLAIR for source localization analyses esp if EEG simulatenously
+    cp MRI_nii/T1.nii.gz ../../EMU_data_BIDS/sub-1/anat/sub-1_T1w.nii.gz
+    cp MRI_nii/T1.json ../../EMU_data_BIDS/sub-1/anat/sub-1_T1w.json
+
+    mkdir CT_nii
+    dcm2niix -o ./CT_nii -z y ./CT/
+    freeview MRI_nii/CT.nii.gz
+    cp MRI_nii/CT.nii.gz ../../EMU_data_BIDS/sub-1/ct/sub-1_ct.nii.gz
+    cp MRI_nii/CT.json ../../EMU_data_BIDS/sub-1/ct/sub-1_ct.json
+'''
 
 import os
 import os.path as op
