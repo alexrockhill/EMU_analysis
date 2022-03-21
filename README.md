@@ -9,6 +9,6 @@ At this point to replicate and walk through the analysis, you will need:
    b) Run `git clone https://github.com/alexrockhill/EMU_analysis` in a shell/terminal
 4) Download the BIDS formatted data on OpenNeuro (link)
 
-Then you can run each python file in order, e.g. `python 2_gui.py`
+Then you can run each python file in order, e.g. `python 1_gui.py`
 
 For information on how this dataset was converted to BIDS, see https://mne.tools/mne-bids/dev/auto_examples/convert_ieeg_to_bids.html
