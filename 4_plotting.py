@@ -2,11 +2,12 @@ import os
 import os.path as op
 import numpy as np
 import pandas as pd
-from collections import OrderedDict
 
 import mne
+import nibabel as nib
 import matplotlib.pyplot as plt
 from matplotlib import patheffects
+from matplotlib.colors import LinearSegmentedColormap
 
 from scipy import stats
 
@@ -19,6 +20,9 @@ from params import ATLAS as aseg
 from params import ALPHA as alpha
 from params import LEFT_HANDED_SUBJECTS as lh_sub
 from params import FREQUENCIES as freqs
+
+# this is a modification of the MNE function for our purposes
+from circle import _plot_connectivity_circle
 
 freqs = np.array([0] + list(freqs))  # add evoked
 
@@ -43,7 +47,7 @@ if not op.isdir(fig_dir):
 subjects_dir = op.join(bids_root, 'derivatives')
 brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
                     subjects_dir=subjects_dir, units='m')
-colors = mne._freesurfer.read_freesurfer_lut()[1]
+lut, colors = mne._freesurfer.read_freesurfer_lut()
 cmap = plt.get_cmap('viridis')
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
@@ -88,39 +92,42 @@ image_thresh = np.quantile(
     abs(np.array(list(null_images.values()))), 1 - alpha, axis=0)
 
 # feature map computation
-feature_maps = np.zeros((4,) + spec_shape)
+feature_maps = np.zeros((3, 2) + spec_shape)
 for sub, elec_name, number, score in zip(
         scores['sub'], scores['elec_name'], scores['number'],
         scores['event_scores']):
+    name = f'sub-{sub}_ch-{elec_name}{int(number)}'
+    image = images[name]
+    ch_cluster = clusters[name]
     if score > sig_thresh:
-        image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
-        feature_maps[0] += abs(image) > image_thresh  # count
-        feature_maps[1] += image > image_thresh
-
-# cluster feature maps
-for name, ch_cluster in clusters.items():
-    feature_maps[2] += ~np.isnan(ch_cluster)
-    feature_maps[3] += ~np.isnan(ch_cluster) * ch_cluster > 0
+        feature_maps[0, 0] += abs(image) > image_thresh  # count
+        feature_maps[1, 0] += image > image_thresh
+        feature_maps[2, 0] += score * (abs(image) > image_thresh)
+        feature_maps[0, 1] += ~np.isnan(ch_cluster)
+        feature_maps[1, 1] += ~np.isnan(ch_cluster) * ch_cluster > 0
+        feature_maps[2, 1] += score * ~np.isnan(ch_cluster)
 
 
 # normalize
-feature_maps[1] /= feature_maps[0]  # scale by count
-feature_maps[0] /= feature_maps[0].max()
-feature_maps[3] /= feature_maps[2]  # scale by count
-feature_maps[2] /= feature_maps[2].max()
+feature_maps[1, 0] /= feature_maps[0, 0]  # scale by count
+feature_maps[2, 0] /= feature_maps[0, 0]  # scale by count
+feature_maps[0, 0] /= feature_maps[0, 0].max()
+feature_maps[1, 1] /= feature_maps[0, 1]  # scale by count
+feature_maps[2, 1] /= feature_maps[0, 1]  # scale by count
+feature_maps[0, 1] /= feature_maps[0, 1].max()
 
 # time-frequency areas of interest
-prop_thresh = 0.5
-areas = {'Pre-Movement Beta': (1, 25, 37, -0.4, -0.1),
-         'Delta': (1, 1, 5, -0.5, 0.5),
-         'Evoked Potential': (1, 0, 0, -0.5, 0.5),
-         'Post-Movement High-Beta': (1, 27, 40, 0, 0.25),
-         'Post-Movement Low-Beta': (1, 14, 23, 0.05, 0.25),
-         'Post-Movement Gamma': (1, 45, 160, 0.08, 0.23),
-         'Pre-Movement Alpha': (0, 7, 14, -0.3, 0)}
+prop_thresh = 0.33
+areas = {'Pre-Movement Beta': (1, 22, 37, -0.35, -0.05),
+         'Delta': (0, 1, 4, -0.5, 0.25),
+         'Event-Related Potential': (1, 0, 0, -0.5, 0.5),
+         'Post-Movement High-Beta': (1, 27, 36, 0.05, 0.2),
+         'Post-Movement Low-Beta': (1, 14, 23, 0.1, 0.25),
+         'Post-Movement Gamma': (0, 43, 140, 0.1, 0.23),
+         'Pre-Movement Alpha': (0, 7, 13, -0.25, 0)}
 
 area_directions = {'Pre-Movement Beta': (-1,), 'Delta': (1,),
-                   'Evoked Potential': (-1, 1),
+                   'Event-Related Potential': (-1, 1),
                    'Post-Movement High-Beta': (1,),
                    'Post-Movement Low-Beta': (1,),
                    'Post-Movement Gamma': (1,),
@@ -128,7 +135,7 @@ area_directions = {'Pre-Movement Beta': (-1,), 'Delta': (1,),
 
 
 area_contacts = {area: dict() for area in areas}
-for name, image in images.items():
+for name, cluster in clusters.items():
     sub, ch = [phrase.split('-')[1] for phrase in
                name.split('_')[0:2]]
     elec_name = ''.join([letter for letter in ch if not letter.isdigit()])
@@ -137,7 +144,7 @@ for name, image in images.items():
                       (ch_pos['elec_name'] == elec_name) &
                       (ch_pos['number'].astype(int).astype(str) == number)]):
         continue  # no channel position, skip
-    mask = (abs(image) > image_thresh) * np.sign(image)
+    mask = ~np.isnan(cluster) * np.sign(cluster)
     for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
         fmin_idx = np.argmin(abs(freqs - fmin))
         fmax_idx = np.argmin(abs(freqs - fmax))
@@ -146,13 +153,19 @@ for name, image in images.items():
         this_area = mask[slice(fmin_idx, fmax_idx + 1),
                          slice(tmin_idx, tmax_idx + 1)]
         area_contacts[area][(int(sub), elec_name, int(number))] = \
-            this_area.sum() / this_area.size
+            np.nansum(this_area) / this_area.size
 
 
-def format_label(label, combine_hemi=False):
+def format_label(label, combine_hemi=False, cortex=True):
     label = label.lower()
+    # add spaces
+    for kw in ('middle', 'inferior', 'superior', 'isthmus', 'temporal',
+               'caudal', 'pars', 'rostral', 'medial', 'anterior',
+               'frontal', 'occipital', 'lateral'):
+        label = label.replace(kw, kw + ' ')
+    label = label.replace('bankssts', 'banks of superior temporal sulcus')
     if 'ctx-' in label:
-        label = label.replace('ctx-', '') + ' Cortex'
+        label = label.replace('ctx-', '') + (' Cortex' if cortex else '')
     if combine_hemi:
         label = label.replace('lh-', '').replace('rh-', '').replace(
             'left-', '').replace('right-', '')
@@ -161,7 +174,7 @@ def format_label(label, combine_hemi=False):
             label = 'Left ' + label.replace('lh-', '').replace('left-', '')
         if 'rh-' in label or 'right-' in label:
             label = 'Right ' + label.replace('rh-', '').replace('right-', '')
-    return label.replace('-', ' ').title()
+    return label.replace('-', ' ').title().strip()
 
 
 # Plots
@@ -646,33 +659,44 @@ fig.savefig(op.join(fig_dir, 'best_electrodes.png'), dpi=300)
 
 # Figure 8: Feature maps
 
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-axes = axes.flatten()
-for i, (feature_map, ax) in enumerate(zip(feature_maps, axes)):
-    ax.set_xticks(np.linspace(0, spec_shape[1], 5))
-    ax.set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
-    ax.set_yticks(range(len(freqs)))
-    ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
-                        enumerate(np.array(freqs).round(
-                        ).astype(int))], fontsize=8)
-    c = ax.imshow(feature_map, vmin=0, vmax=1, cmap='viridis',
-                  aspect='auto')
-    ax.invert_yaxis()
-    fig.colorbar(c, ax=ax)
+fig, axes = plt.subplots(3, 2, figsize=(8, 8))
+for idx, ((svm_map, cluster_map), (ax1, ax2)) in enumerate(
+        zip(feature_maps, axes)):
+    vmin = 0 if idx < 2 else 0.5
+    c = ax1.imshow(svm_map, vmin=vmin, vmax=1, cmap='viridis', aspect='auto')
+    fig.colorbar(c, ax=ax1)
+    c = ax2.imshow(cluster_map, vmin=vmin, vmax=1,
+                   cmap='viridis', aspect='auto')
+    fig.colorbar(c, ax=ax2)
+    for ax in (ax1, ax2):
+        ax.set_xticks(np.linspace(0, spec_shape[1], 5))
+        ax.set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
+        ax.invert_yaxis()
+    ax1.set_ylabel('Frequency (Hz)')
+    ax1.set_yticks(range(len(freqs)))
+    ax1.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
+                         enumerate(np.array(freqs).round(
+                         ).astype(int))], fontsize=5)
+    ax2.set_yticks([])
+    if idx == 0:
+        ax1.set_title('Relative Abundance of\nSignificant Coefficients')
+        ax2.set_title('Relative Abundance of\nSignificant Clusters')
+    elif idx == 1:
+        ax1.set_title('Proportion of Positive\nSignificant Coefficients')
+        ax2.set_title('Proportion of Positive\nSignificant Clusters')
+    else:
+        ax1.set_title('Average Accuracy of\nSignificant Coefficients')
+        ax2.set_title('Average Accuracy of\nSignificant Clusters')
 
+for ax in axes[-1]:
+    ax.set_xlabel('Time (s)')
 
-axes[0].set_title('Relative Abundance of\nSignificant Coefficients')
-axes[0].set_ylabel('Frequency (Hz)')
 fig.text(0.04, 0.95, 'a', fontsize=24)
-axes[1].set_title('Proportion of Positive\nSignificant Coefficients')
 fig.text(0.52, 0.95, 'b', fontsize=24)
-axes[2].set_title('Relative Abundance of\nSignificant Clusters')
-fig.text(0.04, 0.47, 'c', fontsize=24)
-axes[2].set_xlabel('Time (s)')
-axes[2].set_ylabel('Frequency (Hz)')
-axes[3].set_title('Proportion of Positive\nSignificant Clusters')
-axes[3].set_xlabel('Time (s)')
-fig.text(0.52, 0.47, 'd', fontsize=24)
+fig.text(0.04, 0.63, 'c', fontsize=24)
+fig.text(0.52, 0.63, 'd', fontsize=24)
+fig.text(0.04, 0.31, 'e', fontsize=24)
+fig.text(0.52, 0.31, 'f', fontsize=24)
 
 fig.tight_layout()
 fig.savefig(op.join(fig_dir, 'feature_map.png'), dpi=300)
@@ -701,7 +725,7 @@ idx = 0
 for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
     # SVM spectrogram coefficients
     ax = axes[idx][0]
-    ax.imshow(feature_maps[fm_idx], vmin={0: 0, 1: 0, 2: 0, 3: 0.5}[fm_idx],
+    ax.imshow(feature_maps[fm_idx, 1], vmin={0: 0, 1: 0, 2: 0, 3: 0.5}[fm_idx],
               vmax=1, cmap='viridis', aspect='auto')
     fmin_idx = np.argmin(abs(freqs - fmin))
     fmax_idx = max([np.argmin(abs(freqs - fmax)), fmin_idx + 1])
@@ -782,9 +806,13 @@ fig.savefig(op.join(fig_dir, 'feature_anatomy.png'), dpi=300)
 # plot the anatomical locations of each of the time-frequency modulations
 # of interest
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
-                   'hypointensities')
+                   'hypointensities', 'cc_', 'cerebellum')
 
-label_dict = dict()
+aseg_img = nib.load(op.join(subjects_dir, template, 'mri', aseg + '.mgz'))
+aseg_data = np.array(aseg_img.dataobj)
+
+
+ch_labels = dict()
 for sub in subjects:  # first, find associated labels
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
@@ -796,65 +824,135 @@ for sub in subjects:  # first, find associated labels
     sub_labels = mne.get_montage_volume_labels(
         montage, f'sub-{sub}', subjects_dir=subjects_dir,
         aseg=aseg, dist=3)[0]
-    sub_labels = {name.replace(' ', ''): lbls
-                  for name, lbls in sub_labels.items()}
-    # then, go through each area and direction of interest
-    for name, directions in area_directions.items():
-        for direction in directions:
-            d_name = u'\u2B06 ' + name if direction == 1 else u'\u2B07 ' + name
-            # finally, go through the area proportions for each electrode and
-            # match them up
-            for (sub2, elec_name, number), prop in area_contacts[area].items():
-                if sub != sub2:
-                    continue
-                if (direction == 1 and prop > prop_thresh) or \
-                        (direction == -1 and prop < -prop_thresh):
-                    these_labels = [label for label in
-                                    sub_labels[f'{elec_name}{number}']
-                                    if not any([kw in label.lower() for
-                                                kw in ignore_keywords])]
-                    for label in these_labels:
-                        label = format_label(label, combine_hemi=True)
-                        if d_name in label_dict:
-                            label_dict[d_name].add(label)
-                        else:
-                            label_dict[d_name] = set([label])
+    for ch_name, labels in sub_labels.items():
+        ch_name = ch_name.replace(' ', '')
+        ch_labels[f'{sub}{ch_name}'] = labels
 
+
+label_dict = dict()
+label_colors = dict()
+label_pos = dict()
+name_freqs = dict()
+raw_labels = set()
+# then, go through each area and direction of interest
+for name, directions in area_directions.items():
+    for direction in directions:
+        d_name = u'\u2B06 ' + name if direction == 1 else u'\u2B07 ' + name
+        if d_name not in name_freqs:
+            name_freqs[d_name] = areas[name][1]
+        # finally, go through the area proportions for each electrode and
+        # match them up
+        for (sub, elec_name, number), prop in area_contacts[name].items():
+            if (direction == 1 and prop > prop_thresh) or \
+                    (direction == -1 and prop < -prop_thresh):
+                these_labels = [label for label in
+                                ch_labels[f'{sub}{elec_name}{number}']
+                                if not any([kw in label.lower() for
+                                            kw in ignore_keywords])]
+                for label in these_labels:
+                    f_label = format_label(label, combine_hemi=True,
+                                           cortex=False)
+                    if f_label not in label_colors:
+                        label_colors[f_label] = colors[label][:3] / 255
+                    if f_label not in label_pos:
+                        label_pos[f_label] = mne.transforms.apply_trans(
+                            aseg_img.header.get_vox2ras_tkr(),
+                            np.array(np.where(
+                                aseg_data == lut[label])).mean(axis=1))
+                    raw_labels.add(label)
+                    if d_name in label_dict:
+                        label_dict[d_name].add(f_label)
+                    else:
+                        label_dict[d_name] = set([f_label])
+
+
+# sort by polar coordinates to wrap frontal to temporal
+label_pos_array = np.array(list(label_pos.values()))
+# first, rotate axes so left is up so theta can run from -pi to pi
+label_pos_rot = mne.transforms.apply_trans(
+    mne.transforms.rotation(y=np.pi / 2), label_pos_array)
+# then get theta which is really elevation but from -pi to pi
+label_pos_theta = mne.transforms._cart_to_sph(label_pos_rot)[:, 1]
+# shift from -pi to pi by +pi to 0 to 2 * pi and then shift to the
+# phase we want to start with
+roi_phase = label_pos_theta[list(label_pos.keys()).index('Putamen')] + np.pi
+label_pos_theta = np.mod((label_pos_theta + np.pi - roi_phase), 2 * np.pi)
+# get the order
+label_pos_order = dict(zip(label_pos.keys(), label_pos_theta))
+labels = sorted(label_pos, key=lambda label: label_pos_order.get(label))
+names = sorted(label_dict.keys(), key=lambda name: name_freqs[name])
+n_names = len(names)
 
 cmap = plt.get_cmap('Set1')
-these_colors = {name: cmap(i) for i, name in
-                enumerate(set([name for names in label_dict.values()
-                               for name in names]))}
+name_colors = [cmap(i) for i in range(n_names)]
+label_cmap = LinearSegmentedColormap.from_list(
+    'label_cmap', name_colors, N=n_names)
+
+brain = mne.viz.Brain(template, hemi=None,
+                      **dict(brain_kwargs, background='black'))
+brain.add_volume_labels(
+    aseg, labels=list(raw_labels),
+    colors=[label_colors[format_label(label, combine_hemi=True,
+                                      cortex=False)]
+            for label in raw_labels], fill_hole_size=1)
 
 
-def append_group(kw):
-    """Append groups of labels by area."""
-    for label in sorted(label_dict):
-        if kw in label.lower() and label not in labels:
-            labels[label] = label_dict[label]
+fig, axes = plt.subplots(5, 3, figsize=(8, 12), facecolor='black',
+                         subplot_kw=dict(projection='polar'))
+gs = axes[0, 0].get_gridspec()  # for adjustments later
 
+node_angles = mne.viz.circular_layout(
+    ['pattern'] + labels, ['pattern'] + labels,
+    start_pos=90 - (360 / (len(labels) + 3)),
+    group_boundaries=[0, 1])
 
-labels = OrderedDict()
-# append by area
-append_group('white')  # first white matter
-append_group('front')
-append_group('opercularis')
-append_group('central')
-append_group('parietal')
-append_group('marginal')
-append_group('precuneus')
-append_group('temp')
-append_group('insula')
-append_group('cortex')
-append_group('')  # subortical
+for ax, name in zip(axes.flatten(), names):
+    node_names = [name] + labels
+    con = np.zeros((len(node_names), len(node_names))) * np.nan
+    for label in label_dict[name]:
+        node_idx = node_names.index(label)
+        label_color = names.index(name) / n_names
+        con[0, node_idx] = con[node_idx, 0] = label_color  # symmetric
 
-fig, ax = plt.subplots(1, 2, figsize=(12, 8), facecolor='black')
-circle_kwargs = dict(fig=fig, show=False, linewidth=1)
+    node_colors = [name_colors[names.index(name)]] + \
+        [label_colors[label] for label in labels]
 
-mne.viz.plot_channel_labels_circle(
-    labels=labels, colors=these_colors, subplot='111', **circle_kwargs)
+    _plot_connectivity_circle(
+        con, [''] * len(node_names), node_angles=node_angles, title=name,
+        node_colors=node_colors, node_height=4,
+        vmin=0, vmax=1, colormap=label_cmap,
+        textcolor=name_colors[names.index(name)], colorbar=False, linewidth=1,
+        ax=ax, show=False)
 
-fig.tight_layout()
-fig.subplots_adjust(top=0.88)
+brain.show_view(azimuth=120, elevation=100, distance=0.325)
+axes[3, 2].remove()  # switch these two out to cartesian
+axes[3, 2] = fig.add_subplot(gs[3, 2])
+axes[3, 2].imshow(brain.screenshot())
+brain.show_view(azimuth=80, elevation=180, distance=0.36)
+axes[4, 2].remove()
+axes[4, 2] = fig.add_subplot(gs[4, 2])
+axes[4, 2].imshow(brain.screenshot())
+
+axes[3, 2].set_title('Left front', color='w')
+axes[4, 2].set_title('Bottom up', color='w')
+
+# add plot to bottom left 4 plots
+for ax in axes[3:, :2].flatten():
+    ax.remove()  # remove small axes
+ax = fig.add_subplot(gs[3:, :2], polar=True)  # add back a big axis
+pos = ax.get_position()
+_plot_connectivity_circle(
+    np.zeros(con.shape) * np.nan, [''] + labels, node_angles=node_angles,
+    node_colors=node_colors, node_height=4, vmin=0, vmax=1, fontsize_names=8,
+    colormap=label_cmap, textcolor='white', colorbar=False, linewidth=1,
+    ax=ax, show=False)
+
+fig.subplots_adjust(hspace=0.1, wspace=0, top=0.95, bottom=0, left=0, right=1)
+# adjust big axis, bring in
+ax.set_position((pos.x0 + 0.05, pos.y0 + 0.02,
+                 pos.width - 0.1, pos.height - 0.1))
+
+fig.text(0.02, 0.98, 'a', color='w', fontsize=12)
+fig.text(0.02, 0.38, 'b', color='w', fontsize=12)
 fig.savefig(op.join(fig_dir, 'feature_labels.png'),
             facecolor=fig.get_facecolor(), dpi=300)
