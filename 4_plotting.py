@@ -153,6 +153,23 @@ for name, cluster in clusters.items():
             np.nansum(this_area) / this_area.size
 
 
+ch_labels = dict()
+for sub in subjects:  # first, find associated labels
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
+    montage.apply_trans(trans)
+    sub_labels = mne.get_montage_volume_labels(
+        montage, f'sub-{sub}', subjects_dir=subjects_dir,
+        aseg=aseg, dist=3)[0]
+    for ch_name, labels in sub_labels.items():
+        ch_name = ch_name.replace(' ', '')
+        ch_labels[f'{sub}{ch_name}'] = labels
+
+
 def format_label(label, combine_hemi=False, cortex=True):
     label = label.lower()
     # add spaces
@@ -462,8 +479,9 @@ fig.suptitle('Classification Accuracies by Label', color='w')
 for idx, label in enumerate(labels):
     for lh in (True, False):
         for name, idxs in {'sig': sig, 'not_sig': not_sig}.items():
-            these_scores = [score for i, (score, labels, sub) in enumerate(zip(
-                scores['event_scores'], ch_pos['label'], ch_pos['sub']))
+            these_scores = [score for i, (sub, elec_name, number, score) in
+                            enumerate(zip(
+                scores['event_scores'], ch_pos['label'], scores['sub']))
                 if label in labels and i in idxs and (lh == (sub in lh_sub))]
             color = colors[label][:3] / 255
             if color.mean() > 0.9:
@@ -807,24 +825,6 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
 
 aseg_img = nib.load(op.join(subjects_dir, template, 'mri', aseg + '.mgz'))
 aseg_data = np.array(aseg_img.dataobj)
-
-
-ch_labels = dict()
-for sub in subjects:  # first, find associated labels
-    info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
-    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
-    montage = mne.channels.make_dig_montage(
-        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
-        coord_frame='head')
-    montage.apply_trans(trans)
-    sub_labels = mne.get_montage_volume_labels(
-        montage, f'sub-{sub}', subjects_dir=subjects_dir,
-        aseg=aseg, dist=3)[0]
-    for ch_name, labels in sub_labels.items():
-        ch_name = ch_name.replace(' ', '')
-        ch_labels[f'{sub}{ch_name}'] = labels
-
 
 label_dict = dict()
 label_colors = dict()
