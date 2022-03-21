@@ -480,9 +480,11 @@ for idx, label in enumerate(labels):
     for lh in (True, False):
         for name, idxs in {'sig': sig, 'not_sig': not_sig}.items():
             these_scores = [score for i, (sub, elec_name, number, score) in
-                            enumerate(zip(
-                scores['event_scores'], ch_pos['label'], scores['sub']))
-                if label in labels and i in idxs and (lh == (sub in lh_sub))]
+                            enumerate(zip(scores['sub'], scores['elec_name'],
+                                          scores['number'],
+                                          scores['event_scores']))
+                            if label in ch_labels[f'{sub}{elec_name}{number}']
+                            and i in idxs and (lh == (sub in lh_sub))]
             color = colors[label][:3] / 255
             if color.mean() > 0.9:
                 color *= 0.75  # gray out white
