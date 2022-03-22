@@ -4,7 +4,7 @@ import mne
 RAW_DATA_DIR = '/home/alex/SwannLab/EMU_data'
 BIDS_ROOT = '/home/alex/SwannLab/EMU_data_BIDS'
 DATA_DIR = '/home/alex/SwannLab/EMU_analysis'
-EXTENSION = 'eps'
+EXTENSION = 'tiff'
 SUBJECTS = [1, 2, 5, 6, 9, 10, 11, 12]
 TASK = 'SlowFast'
 TEMPLATE = 'cvs_avg35_inMNI152'
