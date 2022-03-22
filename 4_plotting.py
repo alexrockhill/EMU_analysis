@@ -13,6 +13,7 @@ from scipy import stats
 
 from params import DATA_DIR as data_dir
 from params import BIDS_ROOT as bids_root
+from params import EXTENSION as ext
 from params import SUBJECTS as subjects
 from params import TASK as task
 from params import TEMPLATE as template
@@ -257,7 +258,7 @@ ax.fill_between([4.1, 5.1], -0.2, 0.2, color='green', alpha=0.25)
 ax.plot([4.13, 4.5, 5.07], [-0.22, -0.68, -0.22], color='green', alpha=0.25)
 ax.text(4.5, -0.85, 'Null Epoch\n-2500 to -1500 ms',
         va='center', ha='center', fontsize=8, color='green', alpha=0.5)
-fig.savefig(op.join(fig_dir, 'task_design.png'), dpi=300)
+fig.savefig(op.join(fig_dir, f'task_design.{ext}'), dpi=300)
 
 
 # Figure 2: Individual implant plots to show sampling
@@ -303,7 +304,7 @@ for ax in axes[1::2].flatten():
     ax.set_position((pos.x0 + 0.02, pos.y0, pos.width, pos.height))
 
 
-fig.savefig(op.join(fig_dir, 'coverage.png'), dpi=300)
+fig.savefig(op.join(fig_dir, f'coverage.{ext}'), dpi=300)
 
 
 # Figure 3: histogram of classification accuracies
@@ -328,7 +329,7 @@ ax.set_xlabel('Test Accuracy')
 ax.set_ylabel('Count')
 ax.legend()
 fig.suptitle('PCA Linear SVM Classification Accuracies')
-fig.savefig(op.join(fig_dir, 'score_hist.png'), dpi=300)
+fig.savefig(op.join(fig_dir, f'score_hist.{ext}'), dpi=300)
 
 print('Paired t-test p-value: {}'.format(
     stats.ttest_rel(scores['event_scores'], scores['null_scores'])[1]))
@@ -459,7 +460,7 @@ pos = cax.get_position()
 cax.set_position((pos.x0, 0.35, 0.05, 0.5))
 pos = cax2.get_position()
 cax2.set_position((pos.x0, 0.1, 0.05, 0.2))
-fig.savefig(op.join(fig_dir, 'high_accuracy.png'), dpi=300)
+fig.savefig(op.join(fig_dir, f'high_accuracy.{ext}'), dpi=300)
 
 
 # Figure 5: Accuracy by label region of interest
@@ -528,7 +529,7 @@ ax.plot([0.26, 0.26, 0.435, 0.435, 0.26],
 
 fig.tight_layout()
 fig.subplots_adjust(top=0.95, bottom=0.07)
-fig.savefig(op.join(fig_dir, 'label_accuracies.png'),
+fig.savefig(op.join(fig_dir, f'label_accuracies.{ext}'),
             facecolor=fig.get_facecolor(), dpi=300)
 
 
@@ -592,7 +593,7 @@ for i, sub in enumerate(subjects):
 
 
 fig.suptitle('CSP-SVM Comparison by Subject')
-fig.savefig(op.join(fig_dir, f'svm_csp_comparison.png'), dpi=300)
+fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300)
 
 # Figure 7: Best contacts
 
@@ -671,7 +672,7 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
 
 
 fig.tight_layout()
-fig.savefig(op.join(fig_dir, 'best_electrodes.png'), dpi=300)
+fig.savefig(op.join(fig_dir, f'best_electrodes.{ext}'), dpi=300)
 
 
 # Figure 8: Feature maps
@@ -716,7 +717,7 @@ fig.text(0.04, 0.31, 'e', fontsize=24)
 fig.text(0.52, 0.31, 'f', fontsize=24)
 
 fig.tight_layout()
-fig.savefig(op.join(fig_dir, 'feature_map.png'), dpi=300)
+fig.savefig(op.join(fig_dir, f'feature_map.{ext}'), dpi=300)
 
 
 # Figure 9: Anatomical Locations of Significant Correlations Areas
@@ -815,7 +816,7 @@ for ax in axes[:, 1]:
     ax.spines['right'].set_visible(False)
 
 
-fig.savefig(op.join(fig_dir, 'feature_anatomy.png'), dpi=300)
+fig.savefig(op.join(fig_dir, f'feature_anatomy.{ext}'), dpi=300)
 
 
 # Figure 10: Anatomical Locations of Spectral Features
@@ -953,5 +954,5 @@ ax.set_position((pos.x0 + 0.05, pos.y0 + 0.02,
 
 fig.text(0.02, 0.98, 'a', color='w', fontsize=12)
 fig.text(0.02, 0.38, 'b', color='w', fontsize=12)
-fig.savefig(op.join(fig_dir, 'feature_labels.png'),
+fig.savefig(op.join(fig_dir, f'feature_labels.{ext}'),
             facecolor=fig.get_facecolor(), dpi=300)
