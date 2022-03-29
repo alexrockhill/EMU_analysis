@@ -157,3 +157,23 @@ for sub in subjects:
     brain = mne.viz.Brain(template, subjects_dir=subjects_dir,
                           cortex='low_contrast', alpha=0.2, background='white')
     brain.add_sensors(info, template_trans)
+
+
+# save locations to BIDS
+# Note: requires mne-bids version 0.11 (dev)
+for sub in subjects:
+    path.update(subject=str(sub))
+    raw = mne_bids.read_raw_bids(path)
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+    for ch in info['chs']:
+        raw.info['chs'][raw.ch_names.index(ch['ch_name'])] = ch
+    with raw.info._unlock():
+        raw.info['dig'] = info['dig']
+    montage = raw.get_montage()
+    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
+    montage.apply_trans(trans)
+    mne_bids.convert_montage_to_ras(montage, f'sub-{sub}', subjects_dir)
+    dig_path = path.copy().update(datatype='ieeg', space='ACPC')
+    mne_bids.dig._write_dig_bids(dig_path, raw, montage=montage,
+                                 acpc_aligned=True, overwrite=True)
