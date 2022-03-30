@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 
 import mne
 import mne_bids
-from params import DATA_DIR as data_dir
+from params import PLOT_DIR as plot_dir
 from params import BIDS_ROOT as bids_root
 from params import SUBJECTS as subjects
 from params import TASK as task
@@ -42,14 +42,11 @@ def plot_image(fig, ax, img, freqs, times, vmin=None, vmax=None,
     return c
 
 
-spec_data_dir = op.join(data_dir, 'derivatives', 'spectrograms')
-plot_dir = op.join(data_dir, 'derivatives', 'spectrogram_plots')
-out_dir = op.join(data_dir, 'derivatives', 'pca_svm_classifier')
-svm_plot_dir = op.join(data_dir, 'derivatives', 'pca_svm_plots')
-cluster_perm_dir = op.join(data_dir, 'derivatives', 'cluster_perm')
 subjects_dir = op.join(bids_root, 'derivatives')
+out_dir = op.join(bids_root, 'derivatives', 'analysis_data')
+plot_dir = op.join(plot_dir, 'derivatives', 'spectrogram_plots')
 
-for this_dir in (data_dir, plot_dir, out_dir, svm_plot_dir, cluster_perm_dir):
+for this_dir in (out_dir, plot_dir):
     if not op.isdir(this_dir):
         os.makedirs(this_dir)
 
@@ -190,7 +187,7 @@ for sub in subjects:
                          f'({score.round(2)})')
             plot_image(fig, ax, image, tfr_data[event]['freqs'],
                        tfr_data[event]['times'], vmin=-0.05, vmax=0.05)
-            fig.savefig(op.join(svm_plot_dir, out_fname + '_features.png'))
+            fig.savefig(op.join(plot_dir, out_fname + '_features.png'))
             plt.close(fig)
             # spectrograms by classification plot
             fig, axes = plt.subplots(2, 2, figsize=(10, 10))
@@ -233,7 +230,7 @@ for sub in subjects:
             cax = fig.add_axes([0.915, 0.1, 0.01, 0.8])
             fig.colorbar(c, cax=cax)
             cax.set_ylabel(r'Power ($\mu$$V^{2}$)', labelpad=0)
-            fig.savefig(op.join(svm_plot_dir, out_fname + '_comparison.png'))
+            fig.savefig(op.join(plot_dir, out_fname + '_comparison.png'))
             plt.close(fig)
             # single random example spectrograms plot
             n_show = min([tp.size, fp.size, tn.size, fn.size])
@@ -263,13 +260,13 @@ for sub in subjects:
                 name_str = name.replace(' ', '_').lower()
                 fig.tight_layout()
                 fig.savefig(
-                    op.join(svm_plot_dir, out_fname + f'_{name_str}.png'),
+                    op.join(plot_dir, out_fname + f'_{name_str}.png'),
                     dpi=300)
                 plt.close(fig)
 
 
 np.savez_compressed(op.join(out_dir, 'n_epochs.npz'), **n_epochs)
-np.savez_compressed(op.join(cluster_perm_dir, 'clusters.npz'), **clusters)
+np.savez_compressed(op.join(out_dir, 'clusters.npz'), **clusters)
 score_data = pd.DataFrame(dict(sub=subject, elec_name=electrode_name,
                                number=contact_number,
                                event_scores=scores['event'],

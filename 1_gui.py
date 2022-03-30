@@ -2,23 +2,21 @@ import os
 import os.path as op
 import numpy as np
 import nibabel as nib
-import pandas as pd
 
 import mne
 import mne_bids
 
-from params import DATA_DIR as data_dir
 from params import BIDS_ROOT as bids_root
 from params import SUBJECTS as subjects
 from params import TASK as task
 from params import TEMPLATE as template
-from params import ATLAS as aseg
 
 subjects_dir = op.join(bids_root, 'derivatives')
 path = mne_bids.BIDSPath(root=bids_root, task=task)
-out_dir = op.join(data_dir, 'derivatives')
+out_dir = op.join(bids_root, 'derivatives', 'analysis_data')
 
-# align CT, takes ~15 minutes per subject, no user input
+# %%
+# Align CT, takes ~15 minutes per subject, no user input
 for sub in subjects:
     T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
     CT_orig = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
@@ -34,7 +32,10 @@ for sub in subjects:
         subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
 
 
-# a few subjects didn't work and this was used to align (11 and 12)
+# %%
+# For a few subjects the above didn't work and so this was used to
+# align (11 and 12). This has since been fixed in MNE-Python (using
+# manual pre-alignment)
 '''
 import ants
 T1 = ants.image_read(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
@@ -55,7 +56,8 @@ np.savez_compressed(op.join(
     reg_affine=reg_affine)
 '''
 
-# pick contact locations, requires user input
+# %%
+# Pick contact locations, requires user input
 for sub in subjects:
     path.update(subject=str(sub))
     raw = mne_bids.read_raw_bids(path)
@@ -71,15 +73,8 @@ for sub in subjects:
                                   f'sub-{sub}_task-{task}_info.fif'),
                           raw.info)
 
-# initialize for saving positions and labels
-subject = list()
-electrode_name = list()
-contact_number = list()
-ch_position = list()
-anat_label = list()
-lut = {v: k for k, v in mne._freesurfer.read_freesurfer_lut()[0].items()}
-
-# warp to template, takes ~15 minutes per subject, no user input
+# %%
+# Warp to template, takes ~15 minutes per subject, no user input
 template_subjects_dir = op.join(os.environ['FREESURFER_HOME'], 'subjects')
 if not op.exists(op.join(subjects_dir, template)):
     os.symlink(op.join(template_subjects_dir, template),
@@ -119,29 +114,10 @@ for sub in subjects:
         raw.info)
     nib.save(elec_image, op.join(subjects_dir, f'sub-{sub}', 'ieeg',
                                  'elec_image.mgz'))
-    aseg_img = np.array(nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri',
-                                         f'{aseg}.mgz')).dataobj)
-    elec_img = np.array(elec_image.dataobj)
-    for i, ch in enumerate(raw.ch_names):
-        subject.append(sub)
-        electrode_name.append(''.join([letter for letter in ch if
-                                       not letter.isdigit()]).rstrip())
-        contact_number.append(''.join([letter for letter in ch if
-                                       letter.isdigit()]).rstrip())
-        ch_position.append(ch_pos[ch])
-        labels = [lut[idx] for idx in np.unique(aseg_img[elec_img == i + 1])]
-        anat_label.append(','.join(labels))
 
 
-x = [pos[0] for pos in ch_position]
-y = [pos[1] for pos in ch_position]
-z = [pos[2] for pos in ch_position]
-pd.DataFrame(dict(sub=subject, elec_name=electrode_name, number=contact_number,
-                  x=x, y=y, z=z, label=anat_label)).to_csv(
-    op.join(out_dir, 'elec_contacts_info.tsv'), sep='\t', index=False)
-
-
-# plot final result
+# %%
+# Plot final result
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 for sub in subjects:
     info = mne.io.read_info(op.join(
@@ -159,7 +135,8 @@ for sub in subjects:
     brain.add_sensors(info, template_trans)
 
 
-# save locations to BIDS
+# %%
+# Save locations to BIDS
 # Note: requires mne-bids version 0.11 (dev)
 for sub in subjects:
     path.update(subject=str(sub))

@@ -38,8 +38,6 @@ import numpy as np
 from pandas import read_csv
 import json
 
-import mne
-import mne_bids
 import pd_parser
 
 from params import RAW_DATA_DIR as data_dir
@@ -47,6 +45,8 @@ from params import BIDS_ROOT as bids_root
 from params import SUBJECTS as subjects
 from params import TASK as task
 
+# %%
+# Find events
 for sub in subjects:
     sub_dir = [op.join(data_dir, d) for d in os.listdir(data_dir) if
                d.endswith('{:03d}'.format(sub))][0]
@@ -65,7 +65,8 @@ for sub in subjects:
                            beh=beh_fname, data_type='seeg')
 
 
-# compute average response times and accuracties
+# %%
+# Compute average response times and accuracties
 for sub in subjects:
     df = read_csv(op.join(bids_root, f'sub-{sub}', 'beh',
                           f'sub-{sub}_task-{task}_beh.tsv'), sep='\t')
@@ -81,33 +82,3 @@ for sub in subjects:
     correct = correct[df['keypressed'] != 0]
     print(f'sub-{sub} Accuracy: {(100 * np.mean(correct)).round(1)}%')
     print('sub-{} Missed: {}'.format(sub, (df['keypressed'] == 0).sum()))
-
-
-# This part was done after 1_gui.py so that channel locations could be used
-subjects_dir = op.join(bids_root, 'derivatives')
-# Note: T1 was also manually aligned in freeview to ACPC before sharing
-for sub in subjects:
-    bids_path = mne_bids.BIDSPath(subject=str(sub), task=task, root=bids_root)
-    raw = mne_bids.read_raw_bids(bids_path)
-    montage = mne.channels.make_dig_montage(
-        dict(tmp=[0, 0, 0]), coord_frame='mri')
-    montage.dig = mne._freesurfer.get_mni_fiducials(
-        f'sub-{sub}', subjects_dir) + montage.dig
-    raw.set_montage(montage, on_missing='ignore')
-    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
-    t1_fname = op.join(subjects_dir, f'sub-{sub}', 'acpc', 'T1.nii')
-    landmarks = mne_bids.get_anat_landmarks(
-        t1_fname, info=raw.info, trans=trans, fs_subject=f'sub-{sub}',
-        fs_subjects_dir=subjects_dir)
-    with open(op.join(bids_root, f'sub-{sub}', 'anat',
-                      f'sub-{sub}_T1w.json'), 'r') as fid:
-        T1_data = json.load(fid)
-    mne_bids.write_anat(
-        image=t1_fname, bids_path=bids_path.copy().update(suffix='T1w'),
-        landmarks=landmarks, deface=dict(inset=10))
-    with open(op.join(bids_root, f'sub-{sub}', 'anat',
-                      f'sub-{sub}_T1w.json'), 'r') as fid:
-        T1_landmarks = json.load(fid)
-    with open(op.join(bids_root, f'sub-{sub}', 'anat',
-                      f'sub-{sub}_T1w.json'), 'w') as fid:
-        fid.write(json.dumps(T1_data.update(T1_landmarks), indent=4))
