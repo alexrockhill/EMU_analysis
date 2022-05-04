@@ -1,28 +1,30 @@
-import os
 import os.path as op
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
-
-from scipy import stats
-from sklearn.model_selection import train_test_split
-from sklearn.svm import SVC
-from sklearn.decomposition import PCA
 
 import mne
-
-from utils import load_raw
-
-from params import PLOT_DIR as plot_dir
-from params import BIDS_ROOT as bids_root
-from params import SUBJECTS as subjects
-from params import TASK as task
-from params import FREQUENCIES as freqs
-from params import EVENTS as event_dict
-from params import ALPHA as alpha
+import mne_bids
 
 
-def plot_evoked(raw):
+def load_raw(bids_root, sub, task, subjects_dir):
+    path = mne_bids.BIDSPath(root=bids_root, subject=str(sub), task=task)
+    raw = mne_bids.read_raw_bids(path)
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
+    raw.drop_channels([ch for ch in raw.ch_names if ch not in info.ch_names])
+    raw.info = info
+    events, event_id = mne.events_from_annotations(raw)
+    raw.pick_types(seeg=True)  # no stim, other channels
+    # crop first to lessen amount of data, then load
+    raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
+             tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
+    raw.load_data()
+    raw.set_eeg_reference('average')
+    return raw
+
+
+def plot_evoked(raw, sub, event_dict, plot_dir):
     # plot evoked
     events, event_id = mne.events_from_annotations(raw)
     for name, (event, tmin, tmax) in event_dict.items():
@@ -36,10 +38,11 @@ def plot_evoked(raw):
         plt.close(fig)
 
 
-def compute_tfr(raw, i, raw_filtered):
+def compute_tfr(raw, i, raw_filtered, freqs, event_dict):
     sfreq = raw.info['sfreq']
+    ch = raw.ch_names[i]
     events, event_id = mne.events_from_annotations(raw)
-    raw_data = raw._data[i].reshape(1, 1, raw._data.shape[1])
+    raw_data = raw.get_data(picks=[ch]).reshape(1, 1, raw._data.shape[1])
     raw_tfr = mne.time_frequency.tfr_array_morlet(
         raw_data, sfreq, freqs, output='power', verbose=False)
     raw_tfr = np.concatenate(
@@ -61,10 +64,18 @@ def compute_tfr(raw, i, raw_filtered):
         med = np.median(full_tfr._data, axis=2)[:, :, np.newaxis]
         std = np.std(full_tfr._data, axis=2)[:, :, np.newaxis]
         tfr._data = (tfr._data - med) / std
+        tfr_data[name] = dict(data=tfr._data, times=tfr.times,
+                              sfreq=sfreq, freqs=[0] + list(freqs))
+    return tfr_data
+
+
+def plot_tfr(tfr_data, info, ch, sub, event, plot_dir):
+    for name in tfr_data:
         tfr_evo = mne.time_frequency.AverageTFR(
-            raw.info.copy().pick_channels([ch]),
-            np.median(tfr._data, axis=0)[np.newaxis],
-            tfr.times, [0] + list(freqs), nave=tfr._data.shape[0],
+            info.copy().pick_channels([ch]),
+            np.median(tfr_data[name]['data'], axis=0)[np.newaxis],
+            tfr_data[name]['times'], tfr_data[name]['freqs'],
+            nave=tfr_data[name]['data'].shape[0],
             verbose=False)
         fig = tfr_evo.plot(show=False, verbose=False)[0]
         fig.suptitle(f'{ch} {event} Total Power')
@@ -72,9 +83,6 @@ def compute_tfr(raw, i, raw_filtered):
             sub, ch.replace(' ', ''), name)
         fig.savefig(op.join(plot_dir, basename + '_spectrogram.png'))
         plt.close(fig)
-        tfr_data[name] = dict(data=tfr._data, times=tfr.times,
-                              sfreq=sfreq, freqs=[0] + list(freqs))
-    return tfr_data
 
 
 def plot_image(fig, ax, img, freqs, times, vmin=None, vmax=None,
@@ -178,108 +186,3 @@ def plot_confusion_matrix(out_fname, tfr_data, tp, fp, tn, fn):
             op.join(plot_dir, out_fname + f'_{name_str}.png'),
             dpi=300)
         plt.close(fig)
-
-
-subjects_dir = op.join(bids_root, 'derivatives')
-out_dir = op.join(bids_root, 'derivatives', 'analysis_data')
-plot_dir = op.join(plot_dir, 'derivatives', 'spectrogram_plots')
-
-for this_dir in (out_dir, plot_dir):
-    if not op.isdir(this_dir):
-        os.makedirs(this_dir)
-
-
-# table of info for each contact
-subject = list()
-electrode_name = list()  # name of the electrode shaft
-contact_number = list()  # number of contact
-
-pca_vars = dict(event=list(), null=list())
-scores = dict(event=list(), null=list())  # scores per electrode
-images = dict(event=dict(), null=dict())  # correlation coefficient images
-
-clusters = dict()
-threshold = stats.distributions.t.ppf(1 - alpha, len(subjects) - 1)
-
-n_epochs = dict()  # number of epochs per subject
-for sub in subjects:
-    raw = load_raw(bids_root, sub, task, subjects_dir)
-    plot_evoked(raw)
-    # use filtered raw for evoked
-    raw_filtered = raw.copy().filter(l_freq=0.1, h_freq=40)
-    # compute power, do manually for each channel to speed things up
-    for i, ch in enumerate(raw.ch_names):
-        subject.append(sub)
-        elec_name = ''.join([letter for letter in ch if
-                             not letter.isdigit()]).rstrip()
-        number = ''.join([letter for letter in ch if
-                          letter.isdigit()]).rstrip()
-        electrode_name.append(elec_name)
-        contact_number.append(number)
-        print(str(np.round(100 * i / len(raw.ch_names), 2)) + '% done', ch)
-        tfr_data = compute_tfr(raw, i, raw_filtered)
-        # cluster permutation statistics
-        T_obs, ch_clusters, cluster_p_values, _ = \
-            mne.stats.permutation_cluster_1samp_test(
-                tfr_data['event']['data'] - tfr_data['baseline']['data'],
-                n_permutations=1024, threshold=threshold, out_type='mask')
-        T_corrected = np.nan * np.ones_like(T_obs)
-        for c, p_val in zip(ch_clusters, cluster_p_values):
-            if p_val <= alpha:
-                T_corrected[c] = T_obs[c]
-        print(np.nanmin(T_corrected), np.nanmax(T_corrected))
-        clusters[f'sub-{sub}_ch-{elec_name}{number}'] = T_corrected
-        # compare baseline to event as well as null to baseline
-        for (bl_event, event) in [('baseline', 'event'), ('baseline', 'null')]:
-            X = np.concatenate([tfr_data[bl_event]['data'],
-                                tfr_data[event]['data']], axis=0)
-            X = X.reshape(X.shape[0], -1).astype('float32')  # flatten features
-            y = np.concatenate(
-                [np.repeat(0, tfr_data[event]['data'].shape[0]),
-                 np.repeat(1, tfr_data[bl_event]['data'].shape[0])])
-            X_train, X_test, y_train, y_test = \
-                train_test_split(X, y, test_size=.2, random_state=99)
-            pca = PCA(n_components=X_train.shape[0] - 1,
-                      svd_solver='randomized', whiten=True).fit(X_train)
-            pca_vars[event].append(pca.explained_variance_ratio_)
-            X_train_pca = pca.transform(X_train)
-            X_test_pca = pca.transform(X_test)
-            classifier = SVC(kernel='linear', random_state=99)
-            classifier.fit(X_train_pca, y_train)
-            score = classifier.score(X_test_pca, y_test)
-            scores[event].append(score)
-            if str(sub) in n_epochs:
-                assert n_epochs[str(sub)] == y_test.size
-            else:
-                n_epochs[str(sub)] = y_test.size
-            eigenvectors = pca.components_.reshape(
-                (X_train.shape[0] - 1, len(tfr_data[event]['freqs']),
-                 tfr_data[event]['times'].size))
-            image = np.sum(
-                classifier.coef_[0][:, np.newaxis, np.newaxis] * eigenvectors,
-                axis=0)
-            images[event][f'sub-{sub}_ch-{elec_name}{number}'] = image
-            # diagnostic plots
-            pred = classifier.predict(X_test_pca)
-            tp = np.where(np.logical_and(pred == y_test, y_test == 1))[0]
-            fp = np.where(np.logical_and(pred != y_test, y_test == 1))[0]
-            tn = np.where(np.logical_and(pred == y_test, y_test == 0))[0]
-            fn = np.where(np.logical_and(pred != y_test, y_test == 0))[0]
-            plot_confusion_matrix(
-                f'sub-{sub}_ch-{elec_name}{number}_{bl_event}-{event}',
-                tfr_data, tp, fp, tn, fn)
-
-
-np.savez_compressed(op.join(out_dir, 'n_epochs.npz'), **n_epochs)
-np.savez_compressed(op.join(out_dir, 'clusters.npz'), **clusters)
-np.savez_compressed(op.join(out_dir, 'event_pca_vars.npz'),
-                    **pca_vars['event'])
-np.savez_compressed(op.join(out_dir, 'null_pca_vars.npz'),
-                    **pca_vars['null'])
-score_data = pd.DataFrame(dict(sub=subject, elec_name=electrode_name,
-                               number=contact_number,
-                               event_scores=scores['event'],
-                               null_scores=scores['null']))
-score_data.to_csv(op.join(out_dir, 'scores.tsv'), sep='\t', index=False)
-np.savez_compressed(op.join(out_dir, 'event_images.npz'), **images['event'])
-np.savez_compressed(op.join(out_dir, 'null_images.npz'), **images['null'])

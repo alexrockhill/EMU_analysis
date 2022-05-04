@@ -11,7 +11,8 @@ from sklearn.preprocessing import LabelEncoder
 from mne.decoding import CSP
 
 import mne
-import mne_bids
+
+from utils import load_raw
 
 from params import BIDS_ROOT as bids_root
 from params import SUBJECTS as subjects
@@ -31,20 +32,8 @@ if not op.isdir(out_dir):
 
 
 for sub in subjects:
-    path = mne_bids.BIDSPath(root=bids_root, subject=str(sub), task=task)
-    raw = mne_bids.read_raw_bids(path)
+    raw = load_raw(bids_root, sub, task, subjects_dir)
     events, event_id = mne.events_from_annotations(raw)
-    info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
-        f'sub-{sub}_task-{task}_info.fif'))
-    raw.drop_channels([ch for ch in raw.ch_names if ch not in info.ch_names])
-    raw.info = info
-    raw.pick_types(seeg=True)
-    # crop first to lessen amount of data, then load
-    raw.crop(tmin=events[:, 0].min() / raw.info['sfreq'] - 5,
-             tmax=events[:, 0].max() / raw.info['sfreq'] + 5)
-    raw.load_data()
-    raw.set_eeg_reference('average')
     # decoder analysis
     clf = make_pipeline(CSP(), LinearDiscriminantAnalysis())
     n_splits = 5  # how many folds to use for cross-validation
