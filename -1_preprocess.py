@@ -99,15 +99,16 @@ for sub in subjects:
     landmarks = mne_bids.get_anat_landmarks(
         t1_fname, info=raw.info, trans=trans, fs_subject=f'sub-{sub}',
         fs_subjects_dir=subjects_dir)
+    # save original json data from above (dcm2niix)
     with open(op.join(bids_root, f'sub-{sub}', 'anat',
                       f'sub-{sub}_T1w.json'), 'r') as fid:
         T1_data = json.load(fid)
     mne_bids.write_anat(
         image=t1_fname, bids_path=bids_path.copy().update(suffix='T1w'),
-        landmarks=landmarks, deface=dict(inset=10))
+        landmarks=landmarks, deface=dict(inset=15), overwrite=True)
     with open(op.join(bids_root, f'sub-{sub}', 'anat',
                       f'sub-{sub}_T1w.json'), 'r') as fid:
         T1_landmarks = json.load(fid)
     with open(op.join(bids_root, f'sub-{sub}', 'anat',
                       f'sub-{sub}_T1w.json'), 'w') as fid:
-        fid.write(json.dumps(T1_data.update(T1_landmarks), indent=4))
+        fid.write(json.dumps(dict(**T1_data, **T1_landmarks), indent=4))
