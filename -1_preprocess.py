@@ -47,6 +47,8 @@ from params import BIDS_ROOT as bids_root
 from params import SUBJECTS as subjects
 from params import TASK as task
 
+# %%
+# Find events
 for sub in subjects:
     sub_dir = [op.join(data_dir, d) for d in os.listdir(data_dir) if
                d.endswith('{:03d}'.format(sub))][0]
@@ -65,7 +67,8 @@ for sub in subjects:
                            beh=beh_fname, data_type='seeg')
 
 
-# compute average response times and accuracties
+# %%
+# Compute average response times and accuracties
 for sub in subjects:
     df = read_csv(op.join(bids_root, f'sub-{sub}', 'beh',
                           f'sub-{sub}_task-{task}_beh.tsv'), sep='\t')

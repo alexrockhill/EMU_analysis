@@ -3,12 +3,11 @@ import mne
 
 RAW_DATA_DIR = '/home/alex/SwannLab/EMU_data'
 BIDS_ROOT = '/home/alex/SwannLab/EMU_data_BIDS'
-DATA_DIR = '/home/alex/SwannLab/EMU_analysis'
+PLOT_DIR = '/home/alex/SwannLab/EMU_analysis'
 EXTENSION = 'tiff'
 SUBJECTS = [1, 2, 5, 6, 9, 10, 11, 12]
 TASK = 'SlowFast'
 TEMPLATE = 'cvs_avg35_inMNI152'
-N_COMPONENTS = 50
 EVENTS = dict(baseline=('Fixation', -1.5, -0.5),
               null=('Fixation', -2.499, -1.5),
               event=('Response', -0.5, 0.499),

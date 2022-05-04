@@ -11,7 +11,7 @@ from matplotlib.colors import LinearSegmentedColormap
 
 from scipy import stats
 
-from params import DATA_DIR as data_dir
+from params import PLOT_DIR as plot_dir
 from params import BIDS_ROOT as bids_root
 from params import EXTENSION as ext
 from params import SUBJECTS as subjects
@@ -35,7 +35,8 @@ def swarm(x, bins):  # plot helper function
     return y
 
 
-fig_dir = op.join(data_dir, 'derivatives', 'plots')
+fig_dir = op.join(plot_dir, 'derivatives', 'plots')
+data_dir = op.join(bids_root, 'derivatives', 'analysis_data')
 
 if not op.isdir(fig_dir):
     os.makedirs(fig_dir)
@@ -48,33 +49,24 @@ brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
 lut, colors = mne._freesurfer.read_freesurfer_lut()
 cmap = plt.get_cmap('viridis')
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
-ch_pos = pd.read_csv(op.join(data_dir, 'derivatives',
-                             'elec_contacts_info.tsv'), sep='\t')
 
 # get svm information
-source_dir = op.join(data_dir, 'derivatives', 'pca_svm_classifier')
-scores = pd.read_csv(op.join(source_dir, 'scores.tsv'), sep='\t')
-
-# remove nans for positions and scores
-idx = ~np.logical_or(np.logical_or(np.isnan(
-    ch_pos['x']), np.isnan(ch_pos['y'])), np.isnan(ch_pos['z']))
-ch_pos = ch_pos[idx].reset_index()
+scores = pd.read_csv(op.join(data_dir, 'scores.tsv'), sep='\t')
 
 # load cluster permutation results
-with np.load(op.join(data_dir, 'derivatives', 'cluster_perm',
-                     'clusters.npz')) as clusters:
+with np.load(op.join(data_dir, 'clusters.npz')) as clusters:
     clusters = {k: v for k, v in clusters.items()}
 
 
 # load SVM images
-with np.load(op.join(source_dir, 'event_images.npz')) as images:
+with np.load(op.join(data_dir, 'event_images.npz')) as images:
     images = {k: v for k, v in images.items()}
 
 
 spec_shape = images[list(images.keys())[0]].shape
 times = np.linspace(-0.5, 0.5, spec_shape[1])
 
-with np.load(op.join(source_dir, 'null_images.npz')) as null_images:
+with np.load(op.join(data_dir, 'null_images.npz')) as null_images:
     null_images = {k: v for k, v in null_images.items()}
 
 
@@ -138,10 +130,6 @@ for name, cluster in clusters.items():
                name.split('_')[0:2]]
     elec_name = ''.join([letter for letter in ch if not letter.isdigit()])
     number = ''.join([letter for letter in ch if letter.isdigit()])
-    if not len(ch_pos[(ch_pos['sub'].astype(str) == sub) &
-                      (ch_pos['elec_name'] == elec_name) &
-                      (ch_pos['number'].astype(int).astype(str) == number)]):
-        continue  # no channel position, skip
     mask = ~np.isnan(cluster) * np.sign(cluster)
     for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
         fmin_idx = np.argmin(abs(freqs - fmin))
@@ -154,7 +142,22 @@ for name, cluster in clusters.items():
             np.nansum(this_area) / this_area.size
 
 
-ch_labels = dict()
+ch_pos = dict()  # channel positions in template space
+template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
+for sub in subjects:  # first, find associated labels
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
+    montage.apply_trans(template_trans)
+    pos = montage.get_positions()['ch_pos']
+    for ch_name, this_pos in pos.items():
+        ch_name = ch_name.replace(' ', '')
+        ch_pos[f'{sub}{ch_name}'] = this_pos
+
+
+ch_labels = dict()  # channel labels in individual space
 for sub in subjects:  # first, find associated labels
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
@@ -192,9 +195,11 @@ def format_label(label, combine_hemi=False, cortex=True):
     return label.replace('-', ' ').title().strip()
 
 
-# Plots
+#########
+# Plots #
+#########
 
-
+# %%
 # Figure 1: Task figure
 
 sr = 800 / 1200  # screen ratio
@@ -260,7 +265,7 @@ ax.text(4.5, -0.85, 'Null Epoch\n-2500 to -1500 ms',
         va='center', ha='center', fontsize=8, color='green', alpha=0.5)
 fig.savefig(op.join(fig_dir, f'task_design.{ext}'), dpi=300)
 
-
+# %%
 # Figure 2: Individual implant plots to show sampling
 
 fig, axes = plt.subplots(len(subjects) // 2, 6, figsize=(12, 8))
@@ -306,7 +311,7 @@ for ax in axes[1::2].flatten():
 
 fig.savefig(op.join(fig_dir, f'coverage.{ext}'), dpi=300)
 
-
+# %%
 # Figure 3: histogram of classification accuracies
 #
 # Radial basis function scores not shown, almost exactly the same
@@ -334,7 +339,7 @@ fig.savefig(op.join(fig_dir, f'score_hist.{ext}'), dpi=300)
 print('Paired t-test p-value: {}'.format(
     stats.ttest_rel(scores['event_scores'], scores['null_scores'])[1]))
 
-
+# %%
 # Figure 4: Plots of electrodes with high classification accuracies
 
 fig = plt.figure(figsize=(8, 6))
@@ -351,9 +356,12 @@ for ax in axes.flatten():
 # color contacts by accuracy
 brain = mne.viz.Brain(template, **brain_kwargs)
 
-for score, x, y, z in zip(scores['event_scores'],
-                          ch_pos['x'], ch_pos['y'], ch_pos['z']):
+for score, sub, elec_name, number in zip(scores['event_scores'],
+                                         scores['sub'],
+                                         scores['elec_name'],
+                                         scores['number']):
     if score > sig_thresh:
+        x, y, z = ch_pos[f'{sub}{elec_name}{number}']
         brain._renderer.sphere(center=(x, y, z),
                                color=cmap(score * 2 - 1)[:3],
                                scale=0.005)
@@ -376,15 +384,18 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
                    'white-matter', 'wm-', 'cc_', 'cerebellum')
 
 labels = dict()
-for score, these_labels in zip(scores['event_scores'], ch_pos['label']):
-    if isinstance(these_labels, str):
-        for label in these_labels.split(','):
-            if any([kw in label.lower() for kw in ignore_keywords]):
-                continue
-            if label in labels:
-                labels[label].append(score)
-            else:
-                labels[label] = [score]
+for score, sub, elec_name, number in zip(scores['event_scores'],
+                                         scores['sub'],
+                                         scores['elec_name'],
+                                         scores['number']):
+    these_labels = ch_labels[f'{sub}{elec_name}{number}']
+    for label in these_labels:
+        if any([kw in label.lower() for kw in ignore_keywords]):
+            continue
+        if label in labels:
+            labels[label].append(score)
+        else:
+            labels[label] = [score]
 
 
 label_names = list(labels.keys())
@@ -416,17 +427,14 @@ cax.set_ylabel('Accuracy')
 
 # plot counts of electrodes per area
 counts = dict()
-for sub in subjects:
-    these_pos = ch_pos[ch_pos['sub'] == sub]
-    for these_labels in these_pos['label']:
-        if isinstance(these_labels, str):
-            for label in these_labels.split(','):
-                if any([kw in label.lower() for kw in ignore_keywords]):
-                    continue
-                if label in counts:
-                    counts[label] += 1
-                else:
-                    counts[label] = 1
+for these_labels in ch_labels.values():
+    for label in these_labels:
+        if any([kw in label.lower() for kw in ignore_keywords]):
+            continue
+        if label in counts:
+            counts[label] += 1
+        else:
+            counts[label] = 1
 
 
 density_colors = [cmap(min([counts[name] / 10, 1.])) for name in label_names]
@@ -462,16 +470,25 @@ pos = cax2.get_position()
 cax2.set_position((pos.x0, 0.1, 0.05, 0.2))
 fig.savefig(op.join(fig_dir, f'high_accuracy.{ext}'), dpi=300)
 
-
+# %%
 # Figure 5: Accuracy by label region of interest
 
-ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel')
-labels = set([
-    label for labels in ch_pos['label'] for label in labels.split(',')
-    if not any([kw in label.lower() for kw in ignore_keywords])])
-label_scores = {label: [score for score, labels in zip(
-    scores['event_scores'], ch_pos['label']) if label in labels.split(',')]
-    for label in labels}
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel', 'cc_',
+                   'wm', 'cerebellum')  # signal won't cross dura
+labels = set([label for labels in ch_labels.values() for label in labels
+              if not any([kw in label.lower() for kw in ignore_keywords])])
+label_scores = dict()
+for score, sub, elec_name, number in zip(scores['event_scores'],
+                                         scores['sub'],
+                                         scores['elec_name'],
+                                         scores['number']):
+    these_labels = ch_labels[f'{sub}{elec_name}{number}']
+    for label in these_labels:
+        if not any([kw in label.lower() for kw in ignore_keywords]):
+            if label in label_scores:
+                label_scores[label].append(score)
+            else:
+                label_scores[label] = [score]
 labels = sorted(labels, key=lambda label: np.mean(label_scores[label]))
 
 fig, ax = plt.subplots(figsize=(8, 12), facecolor='black')
@@ -517,14 +534,14 @@ ax.set_ylabel('Anatomical Label', color='w')
 
 # make legend
 ax.text(0.27, len(labels) - 2, 'Right hand', va='center')
-ax.scatter([0.42], [len(labels) - 2], color='black')
+ax.scatter([0.5], [len(labels) - 2], color='black')
 ax.text(0.27, len(labels) - 3.5, 'Left hand', va='center')
-ax.scatter([0.42], [len(labels) - 3.5], marker='^', color='black')
+ax.scatter([0.5], [len(labels) - 3.5], marker='^', color='black')
 ax.text(0.27, len(labels) - 5, 'Significant', va='center')
-ax.scatter([0.42], [len(labels) - 5], color='black')
+ax.scatter([0.5], [len(labels) - 5], color='black')
 ax.text(0.27, len(labels) - 6.5, 'Not significant', va='center')
-ax.scatter([0.42], [len(labels) - 6.5], facecolors='none', color='black')
-ax.plot([0.26, 0.26, 0.435, 0.435, 0.26],
+ax.scatter([0.5], [len(labels) - 6.5], facecolors='none', color='black')
+ax.plot([0.26, 0.26, 0.52, 0.52, 0.26],
         len(labels) - np.array([1, 7.15, 7.15, 1, 1]), color='black')
 
 fig.tight_layout()
@@ -533,6 +550,7 @@ fig.savefig(op.join(fig_dir, f'label_accuracies.{ext}'),
             facecolor=fig.get_facecolor(), dpi=300)
 
 
+# %%
 # Figure 6: distribution of classification accuracies across
 # subjects compared to CSP.
 
@@ -564,8 +582,7 @@ for i, sub in enumerate(subjects):
     ax.axis([0.25, 1, -0.28, 0.28])
     # CSP plot
     tf_scores = np.load(op.join(
-        data_dir, 'derivatives', 'csp_decoding',
-        f'sub-{sub}_csp_tf_scores.npz'))['arr_0']
+        data_dir, f'sub-{sub}_csp_tf_scores.npz'))['arr_0']
     info = mne.io.read_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
                                     f'sub-{sub}_task-{task}_info.fif'))
     av_tfr = mne.time_frequency.AverageTFR(
@@ -595,6 +612,7 @@ for i, sub in enumerate(subjects):
 fig.suptitle('CSP-SVM Comparison by Subject')
 fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300)
 
+# %%
 # Figure 7: Best contacts
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
@@ -617,9 +635,9 @@ for ax in axes[:, 0]:
 
 
 for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
-    sub = ch_pos['sub'][idx]
-    elec_name = ch_pos['elec_name'][idx]
-    number = ch_pos['number'][idx]
+    sub = scores['sub'][idx]
+    elec_name = scores['elec_name'][idx]
+    number = scores['number'][idx]
     score = scores['event_scores'][idx]
     ax.set_title(f'Subject {sub} {elec_name} {int(number)} '
                  'Test Accuracy {:.2f}'.format(score))
@@ -674,7 +692,7 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
 fig.tight_layout()
 fig.savefig(op.join(fig_dir, f'best_electrodes.{ext}'), dpi=300)
 
-
+# %%
 # Figure 8: Feature maps
 
 fig, axes = plt.subplots(3, 2, figsize=(8, 8))
@@ -719,7 +737,7 @@ fig.text(0.52, 0.31, 'f', fontsize=24)
 fig.tight_layout()
 fig.savefig(op.join(fig_dir, f'feature_map.{ext}'), dpi=300)
 
-
+# %%
 # Figure 9: Anatomical Locations of Significant Correlations Areas
 
 fig, axes = plt.subplots(len(areas), 5, figsize=(6.5, 10))
@@ -770,11 +788,8 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
     brain = mne.viz.Brain(template, **brain_kwargs)
     for (sub, elec_name, number), prop in area_contacts[area].items():
         if prop > prop_thresh or prop < -prop_thresh:
-            pos = ch_pos[(ch_pos['sub'] == sub) &
-                         (ch_pos['elec_name'] == elec_name) &
-                         (ch_pos['number'] == number)].reset_index().loc[0]
             brain._renderer.sphere(
-                center=(pos['x'], pos['y'], pos['z']),
+                center=ch_pos[f'{sub}{elec_name}{number}'],
                 color='yellow' if prop >= prop_thresh else 'blue',
                 scale=0.005)
     for view_idx, view in enumerate(
@@ -818,7 +833,7 @@ for ax in axes[:, 1]:
 
 fig.savefig(op.join(fig_dir, f'feature_anatomy.{ext}'), dpi=300)
 
-
+# %%
 # Figure 10: Anatomical Locations of Spectral Features
 
 # plot the anatomical locations of each of the time-frequency modulations

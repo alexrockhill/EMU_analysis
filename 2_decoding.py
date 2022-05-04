@@ -14,7 +14,6 @@ import mne
 import mne_bids
 
 from params import BIDS_ROOT as bids_root
-from params import DATA_DIR as data_dir
 from params import SUBJECTS as subjects
 from params import TASK as task
 
@@ -25,7 +24,7 @@ windows = np.linspace(0, 2, 11)
 windows = (windows[1:] + windows[:-1]) / 2  # take mean
 
 subjects_dir = op.join(bids_root, 'derivatives')
-out_dir = op.join(data_dir, 'derivatives', 'csp_decoding')
+out_dir = op.join(bids_root, 'derivatives', 'analysis_data')
 
 if not op.isdir(out_dir):
     os.makedirs(out_dir)
