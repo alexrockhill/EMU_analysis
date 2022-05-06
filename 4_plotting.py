@@ -249,15 +249,16 @@ ax.fill_between([1.4 + rt - 0.5, 1.4 + rt + 0.5], -0.2, 0.2,
                 color='red', alpha=0.25)
 ax.plot([1.32, 1.8, 1.4 + rt + 0.5], [-0.27, -0.38, -0.22],
         color='red', alpha=0.25)
-ax.text(2.2, -0.55, 'Response Epoch\n-500 to 500 ms',
+ax.text(2.3, -0.72, 'Response Epoch\n-500 to 500 ms\nrelative to\nresponse',
         va='center', ha='center', fontsize=8, color='red', alpha=0.5)
 ax.fill_between([5.1, 6.1], -0.2, 0.2, color='blue', alpha=0.25)
 ax.plot([5.13, 5.7, 6.07], [-0.22, -0.38, -0.22], color='blue', alpha=0.25)
-ax.text(5.7, -0.55, 'Baseline Epoch\n-1500 to -500 ms',
+ax.text(5.7, -0.72,
+        'Baseline Epoch\n-1500 to -500 ms\nrelative to\nend of trial',
         va='center', ha='center', fontsize=8, color='blue', alpha=0.5)
 ax.fill_between([4.1, 5.1], -0.2, 0.2, color='green', alpha=0.25)
 ax.plot([4.13, 4.5, 5.07], [-0.22, -0.68, -0.22], color='green', alpha=0.25)
-ax.text(4.5, -0.85, 'Null Epoch\n-2500 to -1500 ms',
+ax.text(4, -0.85, 'Null Epoch\n-2500 to -1500 ms\nrelative to end of trial',
         va='center', ha='center', fontsize=8, color='green', alpha=0.5)
 fig.savefig(op.join(fig_dir, f'task_design.{ext}'), dpi=300)
 
