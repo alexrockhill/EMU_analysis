@@ -2,9 +2,12 @@ import os
 import os.path as op
 import numpy as np
 import nibabel as nib
+import pandas as pd
 
 import mne
 import mne_bids
+
+from utils import load_raw, reject_epochs, plot_evoked
 
 from params import BIDS_ROOT as bids_root
 from params import SUBJECTS as subjects
@@ -154,3 +157,14 @@ for sub in subjects:
     dig_path = path.copy().update(datatype='ieeg', space='ACPC')
     mne_bids.dig._write_dig_bids(dig_path, raw, montage=montage,
                                  acpc_aligned=True, overwrite=True)
+
+
+# %%
+# Perform automatic trial rejection using autoreject
+for sub in subjects:
+    raw = load_raw(sub)
+    keep = reject_epochs(raw)
+    pd.DataFrame(dict(keep=keep)).to_csv(
+        op.join(subjects_dir, f'sub-{sub}', 'ieeg',
+                f'sub-{sub}_reject_mask.tsv'), sep='\t', index=False)
+    plot_evoked(raw, sub, keep)

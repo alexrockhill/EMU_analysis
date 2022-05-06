@@ -1,6 +1,8 @@
+import sys
 import os
 import os.path as op
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
 
@@ -12,11 +14,9 @@ from mne.decoding import CSP
 
 import mne
 
-from utils import load_raw
+from utils import get_subjects, load_raw
 
 from params import BIDS_ROOT as bids_root
-from params import SUBJECTS as subjects
-from params import TASK as task
 
 # decoding-specific parameters
 freqs = np.logspace(np.log(8), np.log(250), 50, base=np.e)
@@ -31,8 +31,14 @@ if not op.isdir(out_dir):
     os.makedirs(out_dir)
 
 
-for sub in subjects:
-    raw = load_raw(bids_root, sub, task, subjects_dir)
+for sub in get_subjects(__name__, sys.argv):
+    out_fname = op.join(out_dir, f'sub-{sub}_csp_tf_scores.npz')
+    if op.isfile(out_fname):
+        continue
+    raw = load_raw(sub)
+    keep = np.array(pd.read_csv(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_reject_mask.tsv'), sep='\t')['keep'])
     events, event_id = mne.events_from_annotations(raw)
     # decoder analysis
     clf = make_pipeline(CSP(), LinearDiscriminantAnalysis())
@@ -50,14 +56,14 @@ for sub in subjects:
         raw_filter = raw.copy().filter(
             fmin, fmax, n_jobs=1, fir_design='firwin',
             skip_by_annotation='edge', verbose=False)
-        bl_epochs = mne.Epochs(raw_filter, events, event_id['Fixation'],
-                               detrend=1, baseline=None, preload=True,
-                               tmin=-2.5 - f_buffer, tmax=-0.5 + f_buffer,
-                               verbose=False)
+        bl_epochs = mne.Epochs(
+            raw_filter, events[events[:, 2] == event_id['Fixation']][keep],
+            detrend=1, baseline=None, preload=True,
+            tmin=-2.5 - f_buffer, tmax=-0.5 + f_buffer, verbose=False)
         # extra 0.001 to match number of samples
         epochs = mne.Epochs(
-            raw_filter, events, event_id['Response'], detrend=1,
-            tmin=-1 - f_buffer, tmax=1.001 + f_buffer,
+            raw_filter, events[events[:, 2] == event_id['Response']][keep],
+            detrend=1, tmin=-1 - f_buffer, tmax=1.001 + f_buffer,
             baseline=None, preload=True, verbose=False)
         y = le.fit_transform(np.concatenate([bl_epochs.events[:, 2],
                                              epochs.events[:, 2]]))
@@ -79,5 +85,4 @@ for sub in subjects:
                 these_scores = np.concatenate(
                     [these_scores, scores[~np.isnan(scores)]])
             tf_scores[i, t] = these_scores[:n_splits].mean()
-    np.savez_compressed(op.join(out_dir, f'sub-{sub}_csp_tf_scores.npz'),
-                        tf_scores)
+    np.savez_compressed(out_fname, tf_scores)

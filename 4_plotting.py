@@ -50,24 +50,20 @@ lut, colors = mne._freesurfer.read_freesurfer_lut()
 cmap = plt.get_cmap('viridis')
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 
+# for sub in 5 6 9 10 11 12; do python 2_decoding.py $sub; python 3_PCA_SVM_classifier.py $sub; done
 # get svm information
-scores = pd.read_csv(op.join(data_dir, 'scores.tsv'), sep='\t')
-
-# load cluster permutation results
-with np.load(op.join(data_dir, 'clusters.npz')) as clusters:
-    clusters = {k: v for k, v in clusters.items()}
-
-
-# load SVM images
-with np.load(op.join(data_dir, 'event_images.npz')) as images:
-    images = {k: v for k, v in images.items()}
+scores, clusters, images, null_images = dict(), dict(), dict(), dict()
+for sub in (1, 2):  #subjects:
+    with np.load(op.join(data_dir, f'sub-{sub}_pca_svm_data.npz'),
+                 allow_pickle=True) as data:
+        scores.update(data['scores'])
+        clusters.update(data['clusters'])
+        images.update(data['images']['event'])
+        null_images.update(data['images']['null'])
 
 
 spec_shape = images[list(images.keys())[0]].shape
 times = np.linspace(-0.5, 0.5, spec_shape[1])
-
-with np.load(op.join(data_dir, 'null_images.npz')) as null_images:
-    null_images = {k: v for k, v in null_images.items()}
 
 
 # compute significant indices pooled across subjects
