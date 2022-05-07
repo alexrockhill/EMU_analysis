@@ -1,7 +1,6 @@
 import os
 import os.path as op
 import numpy as np
-import pandas as pd
 
 import mne
 import nibabel as nib
@@ -50,16 +49,17 @@ lut, colors = mne._freesurfer.read_freesurfer_lut()
 cmap = plt.get_cmap('viridis')
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 
-# for sub in 5 6 9 10 11 12; do python 2_decoding.py $sub; python 3_PCA_SVM_classifier.py $sub; done
 # get svm information
-scores, clusters, images, null_images = dict(), dict(), dict(), dict()
+scores, null_scores, clusters, images, null_images = \
+    dict(), dict(), dict(), dict(), dict()
 for sub in (1, 2):  #subjects:
     with np.load(op.join(data_dir, f'sub-{sub}_pca_svm_data.npz'),
                  allow_pickle=True) as data:
-        scores.update(data['scores'])
-        clusters.update(data['clusters'])
-        images.update(data['images']['event'])
-        null_images.update(data['images']['null'])
+        scores.update(data['scores'].item()['event'])
+        null_scores.update(data['scores'].item()['null'])
+        clusters.update(data['clusters'].item())
+        images.update(data['images'].item()['event'])
+        null_images.update(data['images'].item()['null'])
 
 
 spec_shape = images[list(images.keys())[0]].shape
