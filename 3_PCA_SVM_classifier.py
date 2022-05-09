@@ -28,17 +28,21 @@ for this_dir in (out_dir, plot_dir):
         os.makedirs(this_dir)
 
 
-# table of info for each contact
-subject = list()
-electrode_name = list()  # name of the electrode shaft
-contact_number = list()  # number of contact
-
+# dict of info for each contact
 pca_vars = dict(event=dict(), null=dict())
 scores = dict(event=dict(), null=dict())  # scores per electrode
 images = dict(event=dict(), null=dict())  # correlation coefficient images
 
 clusters = dict()
 threshold = stats.distributions.t.ppf(1 - alpha, len(subjects) - 1)
+
+rng = np.random.default_rng(seed=33)
+min_keep = np.inf
+for sub in subjects:
+    keep = np.array(pd.read_csv(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_reject_mask.tsv'), sep='\t')['keep'])
+    min_keep = min([min_keep, keep.sum()])
 
 for sub in get_subjects(__name__, sys.argv):
     n_epochs = None  # check that the number of epochs is the same
@@ -50,13 +54,10 @@ for sub in get_subjects(__name__, sys.argv):
     raw_filtered = raw.copy().filter(l_freq=0.1, h_freq=40)
     # compute power, do manually for each channel to speed things up
     for i, ch in enumerate(raw.ch_names):
-        subject.append(sub)
         elec_name = ''.join([letter for letter in ch if
                              not letter.isdigit()]).rstrip()
         number = ''.join([letter for letter in ch if
                           letter.isdigit()]).rstrip()
-        electrode_name.append(elec_name)
-        contact_number.append(number)
         name_str = f'sub-{sub}_ch-{elec_name}{number}'
         print(str(np.round(100 * i / len(raw.ch_names), 2)) + '% done', ch)
         tfr_data = compute_tfr(raw, i, raw_filtered, keep)
@@ -75,12 +76,16 @@ for sub in get_subjects(__name__, sys.argv):
         clusters[name_str] = T_corrected
         # compare baseline to event as well as null to baseline
         for (bl_event, event) in [('baseline', 'event'), ('baseline', 'null')]:
+            shuffle_idx = np.arange(tfr_data[event]['data'].shape[0] * 2)
+            rng.shuffle(shuffle_idx)
             X = np.concatenate([tfr_data[bl_event]['data'],
                                 tfr_data[event]['data']], axis=0)
             X = X.reshape(X.shape[0], -1).astype('float32')  # flatten features
             y = np.concatenate(
                 [np.repeat(0, tfr_data[event]['data'].shape[0]),
                  np.repeat(1, tfr_data[bl_event]['data'].shape[0])])
+            X = X[shuffle_idx][:min_keep]
+            y = y[shuffle_idx][:min_keep]
             X_train, X_test, y_train, y_test = \
                 train_test_split(X, y, test_size=.2, random_state=99)
             pca = PCA(n_components=X_train.shape[0] - 1,

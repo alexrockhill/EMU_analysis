@@ -7,6 +7,7 @@ import nibabel as nib
 import matplotlib.pyplot as plt
 from matplotlib import patheffects
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import Normalize
 
 from scipy import stats
 
@@ -52,7 +53,7 @@ template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 # get svm information
 scores, null_scores, clusters, images, null_images = \
     dict(), dict(), dict(), dict(), dict()
-for sub in (1, 2):  #subjects:
+for sub in subjects:
     with np.load(op.join(data_dir, f'sub-{sub}_pca_svm_data.npz'),
                  allow_pickle=True) as data:
         scores.update(data['scores'].item()['event'])
@@ -352,7 +353,7 @@ for ax in axes.flatten():
 
 # color contacts by accuracy
 brain = mne.viz.Brain(template, **brain_kwargs)
-
+norm = Normalize(vmin=sig_thresh, vmax=1)
 for score, sub, elec_name, number in zip(scores['event_scores'],
                                          scores['sub'],
                                          scores['elec_name'],
@@ -360,7 +361,7 @@ for score, sub, elec_name, number in zip(scores['event_scores'],
     if score > sig_thresh:
         x, y, z = ch_pos[f'{sub}{elec_name}{number}']
         brain._renderer.sphere(center=(x, y, z),
-                               color=cmap(score * 2 - 1)[:3],
+                               color=cmap(norm(score))[:3],
                                scale=0.005)
 
 
@@ -396,7 +397,7 @@ for score, sub, elec_name, number in zip(scores['event_scores'],
 
 
 label_names = list(labels.keys())
-acc_colors = [cmap(np.mean(labels[name]) * 2 - 1) for name in label_names]
+acc_colors = [cmap(norm(np.mean(labels[name]))) for name in label_names]
 
 brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
 brain.add_volume_labels(aseg=aseg, labels=label_names,
@@ -411,7 +412,7 @@ brain.close()
 fig.text(0.1, 0.55, 'b')
 
 # colorbar
-gradient = np.linspace(0.5, 1, 256)
+gradient = np.linspace(sig_thresh, 1, 256)
 gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
 cax.imshow(gradient, aspect='auto', cmap=cmap)
 cax.set_xticks([])
@@ -695,7 +696,7 @@ fig.savefig(op.join(fig_dir, f'best_electrodes.{ext}'), dpi=300)
 fig, axes = plt.subplots(3, 2, figsize=(8, 8))
 for idx, ((svm_map, cluster_map), (ax1, ax2)) in enumerate(
         zip(feature_maps, axes)):
-    vmin = 0 if idx < 2 else 0.5
+    vmin = 0 if idx < 2 else sig_thresh
     c = ax1.imshow(svm_map, vmin=vmin, vmax=1, cmap='viridis', aspect='auto')
     fig.colorbar(c, ax=ax1)
     c = ax2.imshow(cluster_map, vmin=vmin, vmax=1,
@@ -712,8 +713,8 @@ for idx, ((svm_map, cluster_map), (ax1, ax2)) in enumerate(
                          ).astype(int))], fontsize=5)
     ax2.set_yticks([])
     if idx == 0:
-        ax1.set_title('Relative Abundance of\nSignificant Coefficients')
-        ax2.set_title('Relative Abundance of\nSignificant Clusters')
+        ax1.set_title('Proportion of\nSignificant Coefficients')
+        ax2.set_title('Proportion of\nSignificant Clusters')
     elif idx == 1:
         ax1.set_title('Proportion of Positive\nSignificant Coefficients')
         ax2.set_title('Proportion of Positive\nSignificant Clusters')
