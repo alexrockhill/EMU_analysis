@@ -1,19 +1,28 @@
 import os
 import os.path as op
 import numpy as np
+import pandas as pd
 
 import mne
 import nibabel as nib
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from matplotlib import patheffects
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import Normalize
 
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.decomposition import PCA
+
 from scipy import stats
+
+from utils import load_raw, compute_tfr
 
 from params import PLOT_DIR as plot_dir
 from params import BIDS_ROOT as bids_root
-from params import EXTENSION as ext
+from params import EXTENSIONS as exts
+from params import EVENTS as event_dict
 from params import SUBJECTS as subjects
 from params import TASK as task
 from params import TEMPLATE as template
@@ -68,10 +77,10 @@ times = np.linspace(-0.5, 0.5, spec_shape[1])
 
 
 # compute significant indices pooled across subjects
-sig_thresh = np.quantile(scores['null_scores'], 1 - alpha)
-not_sig = [i for i, score in enumerate(scores['event_scores'])
+sig_thresh = np.quantile(list(null_scores.values()), 1 - alpha)
+not_sig = [name for name, score in scores.items()
            if score <= sig_thresh]
-sig = [i for i, score in enumerate(scores['event_scores'])
+sig = [name for name, score in scores.items()
        if score > sig_thresh]
 
 # compute null distribution thresholds per subject and per image
@@ -80,12 +89,9 @@ image_thresh = np.quantile(
 
 # feature map computation
 feature_maps = np.zeros((3, 2) + spec_shape)
-for sub, elec_name, number, score in zip(
-        scores['sub'], scores['elec_name'], scores['number'],
-        scores['event_scores']):
-    name = f'sub-{sub}_ch-{elec_name}{int(number)}'
-    image = images[name]
+for name, image in images.items():
     ch_cluster = clusters[name]
+    score = scores[name]
     if score > sig_thresh:
         feature_maps[0, 0] += abs(image) > image_thresh  # count
         feature_maps[1, 0] += image > image_thresh
@@ -123,10 +129,6 @@ area_directions = {'Pre-Movement Beta': (-1,), 'Delta': (1,),
 
 area_contacts = {area: dict() for area in areas}
 for name, cluster in clusters.items():
-    sub, ch = [phrase.split('-')[1] for phrase in
-               name.split('_')[0:2]]
-    elec_name = ''.join([letter for letter in ch if not letter.isdigit()])
-    number = ''.join([letter for letter in ch if letter.isdigit()])
     mask = ~np.isnan(cluster) * np.sign(cluster)
     for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
         fmin_idx = np.argmin(abs(freqs - fmin))
@@ -135,8 +137,7 @@ for name, cluster in clusters.items():
         tmax_idx = np.argmin(abs(times - tmax))
         this_area = mask[slice(fmin_idx, fmax_idx + 1),
                          slice(tmin_idx, tmax_idx + 1)]
-        area_contacts[area][(int(sub), elec_name, int(number))] = \
-            np.nansum(this_area) / this_area.size
+        area_contacts[area][name] = np.nansum(this_area) / this_area.size
 
 
 ch_pos = dict()  # channel positions in template space
@@ -197,11 +198,70 @@ def format_label(label, combine_hemi=False, cortex=True):
 #########
 
 # %%
-# Figure 1: Task figure
+# Figure 1: Schematic
+
+sub = 1
+raw = load_raw(sub=sub)
+events, event_id = mne.events_from_annotations(raw)
+raw_filtered = raw.copy().filter(l_freq=0.1, h_freq=40)
+n_channels = 20
+n_samples = int(10 * raw.info['sfreq'])
+start_sample = events[99, 0]  # response event
+i = raw.ch_names.index('LPM 1')
+raw_data = 1e3 * raw._data[i:i + n_channels,
+                           start_sample: start_sample + n_samples]
+raw_data -= raw_data.mean(axis=1)[:, None]
+
+keep = np.array(pd.read_csv(op.join(
+    subjects_dir, f'sub-{sub}', 'ieeg',
+    f'sub-{sub}_reject_mask.tsv'), sep='\t')['keep'])
+
+event, tmin, tmax = event_dict['event']
+epochs = mne.Epochs(
+    raw, events[events[:, 2] == event_id[event]][keep],
+    preload=True, tmin=tmin, tmax=tmax, detrend=1, baseline=None)
+evoked = epochs.average()
+
+n_epochs = 10
+epochs_data = 1e4 * epochs.get_data(picks=['LPM 1'])[:n_epochs, 0]
+
+tfr_data = compute_tfr(raw, i, raw_filtered, keep)
+
+X = np.concatenate([tfr_data['baseline']['data'],
+                    tfr_data['event']['data']], axis=0)
+X = X.reshape(X.shape[0], -1).astype('float32')  # flatten features
+y = np.concatenate(
+    [np.repeat(0, tfr_data['baseline']['data'].shape[0]),
+     np.repeat(1, tfr_data['event']['data'].shape[0])])
+X_train, X_test, y_train, y_test = \
+    train_test_split(X, y, test_size=0.2, random_state=99)
+pca = PCA(n_components=50,
+          svd_solver='randomized', whiten=True).fit(X_train)
+X_train_pca = pca.transform(X_train)
+X_test_pca = pca.transform(X_test)
+
+classifier = SVC(kernel='linear', random_state=99)
+classifier.fit(X_train_pca, y_train)
+score = classifier.score(X_test_pca, y_test)
+
+eigenvectors = pca.components_.reshape(
+    (50, len(tfr_data['event']['freqs']),
+     tfr_data['event']['times'].size))
+image = np.sum(
+    classifier.coef_[0][:, np.newaxis, np.newaxis] * eigenvectors,
+    axis=0)
+
+pred = classifier.predict(X_test_pca)
+tp = np.where(np.logical_and(pred == y_test, y_test == 1))[0]
+fp = np.where(np.logical_and(pred != y_test, y_test == 1))[0]
+tn = np.where(np.logical_and(pred == y_test, y_test == 0))[0]
+fn = np.where(np.logical_and(pred != y_test, y_test == 0))[0]
 
 sr = 800 / 1200  # screen ratio
-fig, ax = plt.subplots(figsize=(6, 2))
-fig.suptitle('Forced Two-Choice Task Design')
+
+fig, (ax, ax2) = plt.subplots(2, 1, figsize=(6, 8),
+                              gridspec_kw={'height_ratios': [1, 2]})
+ax.text(0, 1.1, 'a', fontsize=18)
 ax.axis('off')
 # fixation 700 + blank 700 + go 1200 + iti 4000 = 6600
 ax.axis([-0.02, 6.62, -1, 1])
@@ -261,10 +321,135 @@ ax.fill_between([4.1, 5.1], -0.2, 0.2, color='green', alpha=0.25)
 ax.plot([4.13, 4.5, 5.07], [-0.22, -0.68, -0.22], color='green', alpha=0.25)
 ax.text(4, -0.85, 'Null Epoch\n-2500 to -1500 ms\nrelative to end of trial',
         va='center', ha='center', fontsize=8, color='green', alpha=0.5)
-fig.savefig(op.join(fig_dir, f'task_design.{ext}'), dpi=300)
+
+ax = ax2
+ax.text(0, 22.1, 'b', fontsize=18)
+ax.axis('off')
+ax.set_xlim([-0.1, 13.1])
+ax.set_ylim([-2.1, 22.1])
+
+# raw plot
+ax.plot(np.linspace(0, 3, raw_data.shape[1]),
+        (raw_data + np.linspace(10, 20, n_channels)[:, None]).T,
+        color='black', linewidth=0.25)
+ax.text(1.5, 21, 'Example Subject\nsEEG Recording', ha='center')
+ax.text(1.5, 9.25, '...', ha='center', fontsize=32, color='gray')
+ax.text(-0.5, 15, 'Amplitude (mV)', va='center', rotation=90)
+ax.text(1.5, 8, 'Time (s)', ha='center', fontsize=8)
+ax.plot([0, 3, 3, 0, 0], [20.5, 20.5, 19.5, 19.5, 20.5],
+        color='red', linewidth=0.5)
+ax.text(3.7, 20.5, 'Epoch', ha='center', fontsize=8)
+for offset in np.linspace(10, 20, n_channels):
+    ax.fill([3.25, 4, 4, 4.25, 4, 4, 3.25, 3.25],
+            offset + np.array([0.1, 0.1, 0.15, 0, -0.15, -0.1, -0.1, 0.1]),
+            color='tab:red' if offset == 20 else 'tab:blue')
+
+'''
+# evoked plot
+ax.fill([3.45, 3.45, 3.4, 3.5, 3.6, 3.55, 3.55, 3.45],
+        [9.5, 8.5, 8.5, 8, 8.5, 8.5, 9.5, 9.5], color='tab:green')
+
+ax.plot(np.linspace(1.5, 4.5, evoked.data.shape[1]),
+        7.5e4 * evoked.data.T + 3.5, color='black', linewidth=0.25)
+ax.text(3, 6.5, 'Evoked Plot', ha='center')
+ax.text(3, -3.5, 'Time Relative\nto Key Response', ha='center', color='r')
+ax.plot([3, 3], [-1, 6], color='r')'''
+
+# epochs plot
+ax.plot(np.linspace(4.5, 7.5, epochs_data.shape[1]),
+        (epochs_data + np.linspace(13, 20, n_epochs)[:, None]).T,
+        color='black', linewidth=0.25)
+ax.text(6, 21, 'Epochs for an\nExample Channel', ha='center', fontsize=8)
+ax.plot([6, 6], [12.75, 20.5], color='r')
+ax.text(6, 12, '...', ha='center', fontsize=32, color='gray')
+ax.text(6, 10.5, 'Average', ha='center')
+ax.plot(np.linspace(4.5, 7.5, epochs_data.shape[1]),
+        epochs_data.mean(axis=0) + 10, color='black', linewidth=0.25)
+ax.text(6, 7.5, 'Time Relative\nto Key Response',
+        fontsize=8, ha='center', color='r')
+ax.plot([6, 6], [9.75, 10.25], color='r')
+
+ax.text(8.25, 20.5, 'TFR', ha='center', va='center', fontsize=8)
+for offset in np.linspace(13, 20, n_epochs):
+    ax.fill(8 + np.array([0, 0.5, 0.5, 0.75, 0.5, 0.5, 0, 0]),
+            offset + np.array([0.1, 0.1, 0.15, 0, -0.15, -0.1, -0.1, 0.1]),
+            color='tab:blue')
+
+# spectrogram
+ax.text(11, 20.8, 'Example Training\nSpectrograms', ha='center')
+for i in range(10):
+    x0, x1 = 9.75 - i / 10, 12.75 - i / 10
+    y0, y1 = 14 - i / 10, 20 - i / 10
+    ax.imshow(tfr_data['event']['data'][9 - i][::-1],
+              extent=(x0, x1, y0, y1), zorder=i,
+              aspect='auto', cmap='viridis')
+    ax.plot([x0, x1, x1, x0, x0], [y0, y0, y1, y1, y0],
+            color='black', linewidth=0.5, zorder=i)
+ax.text(13, 16, 'Frequency (Hz)', va='center', rotation=90, fontsize=8)
+ax.text(10.25, 10, 'PCA', ha='center')
+ax.fill([9.75, 9.75, 9.25, 10.25, 11.25, 10.75, 10.75, 9.75],
+        [11.5, 10, 10, 9, 10, 10, 11.5, 11.5], color='tab:blue')
+
+# pca
+ax.text(10.25, 6.5, 'Component Weights\nfor each Training Epoch',
+        ha='center', fontsize=10)
+ax.plot(np.linspace(8.75, 11.75, X_train_pca.shape[1]),
+        (0.1 * X_train_pca[:n_epochs] +
+         np.linspace(2, 6, n_epochs)[:, None]).T)
+ax.text(10.25, 1, '...', ha='center', fontsize=32, color=(0.5, 0.5, 0.5))
+ax.text(12, 4, 'Epochs', rotation=90, va='center')
+ax.bar(np.linspace(8.75, 11.75, X_train_pca.shape[1]),
+       20 * pca.explained_variance_ratio_,
+       3 / X_train_pca.shape[1] * 0.75)
+ax.text(8.4, 0.25, 'EV', rotation=90, fontsize=8)
+ax.text(10.25, -1, 'Components', ha='center')
+ax.text(8.2, 3, 'SVM', ha='center', va='center')
+ax.fill([8.625, 7.875, 7.875, 7.625, 7.875, 7.875, 8.625, 8.625],
+        [4, 4, 4.5, 3, 1.5, 2, 2, 4], color='tab:blue')
+
+# svm
+ax.text(6, 5.25, 'SVM Coefficients', ha='center')
+ax.plot(np.linspace(4.5, 7.5, classifier.coef_[0].size),
+        4.5 + classifier.coef_[0] / abs(classifier.coef_[0]).max())
+ax.imshow(image[::-1], extent=(4.5, 7.5, -2, 4), aspect='auto', cmap='viridis')
+ax.text(2.5, 4.75, 'Classify', ha='center', fontsize=8)
+ax.fill(1.5 + 3.5 * np.array([0.75, 0.25, 0.25, 0, 0.25, 0.25, 0.75, 0.75]),
+        4 + 2 * np.array([0.1, 0.1, 0.15, 0, -0.15, -0.1, -0.1, 0.1]),
+        color='tab:blue')
+for i in range(10):
+    x0, x1 = 2.25 - i / 10, 4.25 - i / 10
+    y0, y1 = -1 - i / 10, 3 - i / 10
+    ax.imshow(tfr_data['event']['data'][-i][::-1],
+              extent=(x0, x1, y0, y1), zorder=i,
+              aspect='auto', cmap='viridis')
+    ax.plot([x0, x1, x1, x0, x0], [y0, y0, y1, y1, y0],
+            color='black', linewidth=0.5, zorder=i)
+ax.text(1.5, -4.25, 'Example Testing\nSpectrograms and Component Weights',
+        ha='center', fontsize=8)
+ax.plot(np.linspace(0, 1.25, X_test_pca.shape[1]),
+        (0.1 * X_test_pca[:n_epochs] +
+         np.linspace(-0.5, 3, n_epochs)[:, None]).T, linewidth=0.5)
+ax.text(0.625, -1.5, '...', ha='center', fontsize=24, color=(0.5, 0.5, 0.5))
+
+# confusion matrix
+ax.text(0.5, 6.5, 'Confusion Matrix', ha='center')
+ax.text(0.25, 5.4, f'{tp.size}', ha='center', va='center', fontsize=8)
+ax.text(0.75, 5.4, f'{fp.size}', ha='center', va='center', fontsize=8)
+ax.text(0.25, 4.2, f'{fn.size}', ha='center', va='center', fontsize=8)
+ax.text(0.75, 4.2, f'{tn.size}', ha='center', va='center', fontsize=8)
+ax.plot([0, 1, 1, 0, 0],
+        [3.5, 3.5, 6, 6, 3.5], color='black')
+ax.plot([0, 1], [4.75, 4.75], color='black')
+ax.plot([0.5, 0.5], [3.5, 6], color='black')
+
+# red outline
+ax.plot([0, 4.4, 4.4], [7.5, 7.5, 22], color='tab:red')
+
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'schematic.{ext}'), dpi=300)
 
 # %%
-# Figure 2: Individual implant plots to show sampling
+# Figure 3: Individual implant plots to show sampling
 
 fig, axes = plt.subplots(len(subjects) // 2, 6, figsize=(12, 8))
 axes = axes.reshape(len(subjects), 3)
@@ -306,11 +491,11 @@ for ax in axes[1::2].flatten():
     pos = ax.get_position()
     ax.set_position((pos.x0 + 0.02, pos.y0, pos.width, pos.height))
 
-
-fig.savefig(op.join(fig_dir, f'coverage.{ext}'), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'coverage.{ext}'), dpi=300)
 
 # %%
-# Figure 3: histogram of classification accuracies
+# Figure 4: histogram of classification accuracies
 #
 # Radial basis function scores not shown, almost exactly the same
 
@@ -318,27 +503,31 @@ binsize = 0.01
 bins = np.linspace(binsize, 1, int(1 / binsize)) - binsize / 2
 fig, ax = plt.subplots()
 
-ax.hist([scores['event_scores'][i] for i in not_sig], bins=bins,
-        alpha=0.5, color='b', density=True, label='not signficant')
-ax.hist([scores['event_scores'][i] for i in sig], bins=bins,
-        alpha=0.5, color='r', density=True, label='significant')
-ax.hist(scores['null_scores'], bins=bins, alpha=0.5, color='gray',
+patches = ax.hist(list(scores.values()), bins=bins,
+                  alpha=0.5, color='b', density=True)[2]
+for i, left_bin in enumerate(bins[:-1]):
+    if left_bin > sig_thresh:
+        patches[i].set_facecolor('r')
+ax.hist(list(null_scores.values()), bins=bins, alpha=0.5, color='gray',
         density=True, label='null')
 y_bounds = ax.get_ylim()
-ax.plot([np.mean(scores['event_scores'])] * 2, y_bounds, color='black')
-ax.plot([np.mean(scores['null_scores'])] * 2, y_bounds, color='gray')
+ax.axvline(np.mean(list(scores.values())), *y_bounds, color='black')
+ax.axvline(np.mean(list(null_scores.values())), *y_bounds, color='gray')
 ax.set_xlim([0.25, 1])
 ax.set_xlabel('Test Accuracy')
 ax.set_ylabel('Count')
-ax.legend()
+not_sig_patch = mpatches.Patch(color='b', alpha=0.5, label='not significant')
+sig_patch = mpatches.Patch(color='r', alpha=0.5, label='significant')
+ax.legend(handles=[not_sig_patch, sig_patch])
 fig.suptitle('PCA Linear SVM Classification Accuracies')
-fig.savefig(op.join(fig_dir, f'score_hist.{ext}'), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'score_hist.{ext}'), dpi=300)
 
 print('Paired t-test p-value: {}'.format(
     stats.ttest_rel(scores['event_scores'], scores['null_scores'])[1]))
 
 # %%
-# Figure 4: Plots of electrodes with high classification accuracies
+# Figure 5: Plots of electrodes with high classification accuracies
 
 fig = plt.figure(figsize=(8, 6))
 gs = fig.add_gridspec(3, 4)
@@ -466,10 +655,11 @@ pos = cax.get_position()
 cax.set_position((pos.x0, 0.35, 0.05, 0.5))
 pos = cax2.get_position()
 cax2.set_position((pos.x0, 0.1, 0.05, 0.2))
-fig.savefig(op.join(fig_dir, f'high_accuracy.{ext}'), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'high_accuracy.{ext}'), dpi=300)
 
 # %%
-# Figure 5: Accuracy by label region of interest
+# Figure 6: Accuracy by label region of interest
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel', 'cc_',
                    'wm', 'cerebellum')  # signal won't cross dura
@@ -544,12 +734,13 @@ ax.plot([0.26, 0.26, 0.52, 0.52, 0.26],
 
 fig.tight_layout()
 fig.subplots_adjust(top=0.95, bottom=0.07)
-fig.savefig(op.join(fig_dir, f'label_accuracies.{ext}'),
-            facecolor=fig.get_facecolor(), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'label_accuracies.{ext}'),
+                facecolor=fig.get_facecolor(), dpi=300)
 
 
 # %%
-# Figure 6: distribution of classification accuracies across
+# Figure 7: distribution of classification accuracies across
 # subjects compared to CSP.
 
 # decoding-specific parameters
@@ -608,10 +799,11 @@ for i, sub in enumerate(subjects):
 
 
 fig.suptitle('CSP-SVM Comparison by Subject')
-fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300)
 
 # %%
-# Figure 7: Best contacts
+# Figure 8: Contacts of interest
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
                    'white-matter', 'wm-')
@@ -688,10 +880,11 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
 
 
 fig.tight_layout()
-fig.savefig(op.join(fig_dir, f'best_electrodes.{ext}'), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'best_electrodes.{ext}'), dpi=300)
 
 # %%
-# Figure 8: Feature maps
+# Figure 9: Feature maps
 
 fig, axes = plt.subplots(3, 2, figsize=(8, 8))
 for idx, ((svm_map, cluster_map), (ax1, ax2)) in enumerate(
@@ -733,10 +926,11 @@ fig.text(0.04, 0.31, 'e', fontsize=24)
 fig.text(0.52, 0.31, 'f', fontsize=24)
 
 fig.tight_layout()
-fig.savefig(op.join(fig_dir, f'feature_map.{ext}'), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'feature_map.{ext}'), dpi=300)
 
 # %%
-# Figure 9: Anatomical Locations of Significant Correlations Areas
+# Figure 10: Anatomical Locations of Significant Correlations Areas
 
 fig, axes = plt.subplots(len(areas), 5, figsize=(6.5, 10))
 
@@ -828,11 +1022,11 @@ axes[0, 1].spines['top'].set_visible(False)
 for ax in axes[:, 1]:
     ax.spines['right'].set_visible(False)
 
-
-fig.savefig(op.join(fig_dir, f'feature_anatomy.{ext}'), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'feature_anatomy.{ext}'), dpi=300)
 
 # %%
-# Figure 10: Anatomical Locations of Spectral Features
+# Figure 11: Anatomical Locations of Spectral Features
 
 # plot the anatomical locations of each of the time-frequency modulations
 # of interest
@@ -967,5 +1161,6 @@ ax.set_position((pos.x0 + 0.05, pos.y0 + 0.02,
 
 fig.text(0.02, 0.98, 'a', color='w', fontsize=12)
 fig.text(0.02, 0.38, 'b', color='w', fontsize=12)
-fig.savefig(op.join(fig_dir, f'feature_labels.{ext}'),
-            facecolor=fig.get_facecolor(), dpi=300)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'feature_labels.{ext}'),
+                facecolor=fig.get_facecolor(), dpi=300)
