@@ -15,6 +15,116 @@ from params import EVENTS as event_dict
 
 subjects_dir = op.join(bids_root, 'derivatives')
 
+DESTRIEUX_DICT = {
+    'G_and_S_frontomargin': 'Fronto-marginal gyrus (of Wernicke) and sulcus',
+    'G_and_S_occipital_inf': 'Inferior occipital gyrus (O3) and sulcus',
+    'G_and_S_paracentral': 'Paracentral lobule and sulcus',
+    'G_and_S_subcentral': 'Subcentral gyrus (central operculum) and sulci',
+    'G_and_S_transv_frontopol': 'Transverse frontopolar gyri and sulci',
+    'G_and_S_cingul-Ant':
+    'Anterior part of the cingulate gyrus and sulcus (ACC)',
+    'G_and_S_cingul-Mid-Ant':
+    'Middle-anterior part of the cingulate gyrus and sulcus (aMCC)',
+    'G_and_S_cingul-Mid-Post':
+    'Middle-posterior part of the cingulate gyrus and sulcus (pMCC)',
+    'G_cingul-Post-dorsal':
+    'Posterior-dorsal part of the cingulate gyrus (dPCC)',
+    'G_cingul-Post-ventral':
+    'Posterior-ventral part of the cingulate gyrus '
+    '(vPCC, isthmus of the cingulate gyrus)',
+    'G_cuneus': 'Cuneus (O6)',
+    'G_front_inf-Opercular': 'Opercular part of the inferior frontal gyrus',
+    'G_front_inf-Orbital': 'Orbital part of the inferior frontal gyrus',
+    'G_front_inf-Triangul': 'Triangular part of the inferior frontal gyrus',
+    'G_front_middle': 'Middle frontal gyrus (F2)',
+    'G_front_sup': 'Superior frontal gyrus (F1)',
+    'G_Ins_lg_and_S_cent_ins':
+    'Long insular gyrus and central sulcus of the insula L',
+    'G_insular_short': 'Short insular gyri',
+    'G_occipital_middle':
+    'Middle occipital gyrus (O2, lateral occipital gyrus)',
+    'G_occipital_sup': 'Superior occipital gyrus (O1)',
+    'G_oc-temp_lat-fusifor':
+    'Lateral occipito-temporal gyrus (fusiform gyrus, O4-T4) I',
+    'G_oc-temp_med-Lingual':
+    'Lingual gyrus, ligual part of the '
+    'medial occipito-temporal gyrus, (O5)',
+    'G_oc-temp_med-Parahip':
+    'Parahippocampal gyrus, parahippocampal part of the '
+    'medial occipito-temporal gyrus, (T5)',
+    'G_orbital': 'Orbital gyri',
+    'G_pariet_inf-Angular': 'Angular gyrus',
+    'G_pariet_inf-Supramar': 'Supramarginal gyrus',
+    'G_parietal_sup': 'Superior parietal lobule (lateral part of P1)',
+    'G_postcentral': 'Postcentral gyrus',
+    'G_precentral': 'Precentral gyrus',
+    'G_precuneus': 'Precuneus (medial part of P1)',
+    'G_rectus': 'Straight gyrus, Gyrus rectus',
+    'G_subcallosal': 'Subcallosal area, subcallosal gyrus M, I',
+    'G_temp_sup-G_T_transv':
+    'Anterior transverse temporal gyrus (of Heschl)',
+    'G_temp_sup-Lateral':
+    'Lateral aspect of the superior temporal gyrus',
+    'G_temp_sup-Plan_polar':
+    'Planum polare of the superior temporal gyrus',
+    'G_temp_sup-Plan_tempo':
+    'Planum temporale or temporal plane of '
+    'the superior temporal gyrus',
+    'G_temporal_inf': 'Inferior temporal gyrus (T3)',
+    'G_temporal_middle': 'Middle temporal gyrus (T2)',
+    'Lat_Fis-ant-Horizont':
+    'Horizontal ramus of the anterior segment of the '
+    'lateral sulcus (or fissure)',
+    'Lat_Fis-ant-Vertical':
+    'Vertical ramus of the anterior segment of the lateral sulcus '
+    '(or fissure)',
+    'Lat_Fis-post':
+    'Posterior ramus (or segment) of the '
+    'lateral sulcus (or fissure)',
+    'Pole_occipital': 'Occipital pole',
+    'Pole_temporal': 'Temporal pole',
+    'S_calcarine Calcarine sulcus': 'M',
+    'S_central': 'Central sulcus (Rolando’s fissure)',
+    'S_cingul-Marginalis': 'Marginal branch (or part) of the cingulate sulcus',
+    'S_circular_insula_ant':
+    'Anterior segment of the circular sulcus of the insula',
+    'S_circular_insula_inf':
+    'Inferior segment of the circular sulcus of the insula',
+    'S_circular_insula_sup':
+    'Superior segment of the circular sulcus of the insula',
+    'S_collat_transv_ant': 'Anterior transverse collateral sulcus',
+    'S_collat_transv_post': 'Posterior transverse collateral sulcus',
+    'S_front_inf': 'Inferior frontal sulcus',
+    'S_front_middle': 'Middle frontal sulcus',
+    'S_front_sup': 'Superior frontal sulcus',
+    'S_interm_prim-Jensen': 'Sulcus intermedius primus (of Jensen)',
+    'S_intrapariet_and_P_trans':
+    'Intraparietal sulcus (interparietal sulcus) and '
+    'transverse parietal sulci',
+    'S_oc_middle_and_Lunatus': 'Middle occipital sulcus and lunatus sulcus',
+    'S_oc_sup_and_transversal':
+    'Superior occipital sulcus and transverse occipital sulcus',
+    'S_occipital_ant':
+    'Anterior occipital sulcus and preoccipital notch '
+    '(temporo-occipital incisure)',
+    'S_oc-temp_lat': 'Lateral occipito-temporal sulcus',
+    'S_oc-temp_med_and_Lingual':
+    'Medial occipito-temporal sulcus (collateral sulcus) and lingual sulcus',
+    'S_orbital_lateral': 'Lateral orbital sulcus',
+    'S_orbital_med-olfact': 'Medial orbital sulcus (olfactory sulcus)',
+    'S_orbital-H_Shaped': 'Orbital sulci (H-shaped sulci)',
+    'S_parieto_occipital': 'Parieto-occipital sulcus (or fissure)',
+    'S_pericallosal': 'Pericallosal sulcus (S of corpus callosum)',
+    'S_postcentral': 'Postcentral sulcus',
+    'S_precentral-inf-part': 'Inferior part of the precentral sulcus',
+    'S_precentral-sup-part': 'Superior part of the precentral sulcus',
+    'S_suborbital':
+    'Suborbital sulcus (sulcus rostrales, supraorbital sulcus)',
+    'S_subparietal': 'Subparietal sulcus',
+    'S_temporal_inf': 'Inferior temporal sulcus',
+    'S_temporal_sup': 'Superior temporal sulcus (parallel sulcus)',
+    'S_temporal_transverse': 'Transverse temporal sulcus'}
+
 
 def get_subjects(name, argv):
     return argv[1:] if name == '__main__' and len(argv) > 1 else subjects

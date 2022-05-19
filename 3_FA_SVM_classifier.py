@@ -9,7 +9,7 @@ from scipy import stats
 from scipy.ndimage import gaussian_filter1d
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.svm import SVC
-from sklearn.decomposition import PCA
+from sklearn.decomposition import FactorAnalysis
 
 import mne
 
@@ -73,15 +73,15 @@ if not op.isfile(n_components_fname):  # hyperparameter search
                 print('Cross validation...')
                 n_comp_check = np.arange(1, train_i.size - 1)
                 for n_components in n_comp_check:
-                    pca = PCA(n_components=n_components,
-                              svd_solver='randomized', whiten=True).fit(
+                    fa = FactorAnalysis(n_components=n_components,
+                                        rotation='varimax').fit(
                         X_train[train_i])
-                    X_train_v_pca = pca.transform(X_train[train_i])
-                    X_validate_pca = pca.transform(X_train[validate_i])
+                    X_train_v_fa = fa.transform(X_train[train_i])
+                    X_validate_fa = fa.transform(X_train[validate_i])
                     classifier = SVC(kernel='linear', random_state=99)
-                    classifier.fit(X_train_v_pca, y_train[train_i])
+                    classifier.fit(X_train_v_fa, y_train[train_i])
                     score = classifier.score(
-                        X_validate_pca, y_train[validate_i])
+                        X_validate_fa, y_train[validate_i])
                     if n_components in n_comp_scores:
                         n_comp_scores[n_components].append(score)
                     else:
@@ -127,7 +127,7 @@ if not op.isfile(n_comp_plot_fname):
         axes[0].plot(n_comps, [n_components_dist[name][n_comp] for
                                n_comp in n_comps], alpha=0.5)
     axes[1].set_title('Median Subtracted Scores')
-    axes[1].set_xlabel('Number of Principal Components')
+    axes[1].set_xlabel('Number of Factor Analysis Components')
     for name in n_components_dist:
         n_comps = list(n_components_dist[name])
         score_med = np.median([n_components_dist[name][n_comp]
@@ -144,7 +144,7 @@ if not op.isfile(n_comp_plot_fname):
 # %%
 # The main classification
 
-pca_vars = dict(event=dict(), null=dict())
+fa_vars = dict(event=dict(), null=dict())
 svm_coef = dict(event=dict(), null=dict())
 scores = dict(event=dict(), null=dict())  # scores per electrode
 images = dict(event=dict(), null=dict())  # correlation coefficient images
@@ -155,7 +155,7 @@ threshold = stats.distributions.t.ppf(1 - alpha, len(subjects) - 1)
 rng = np.random.default_rng(seed=33)
 
 for sub in get_subjects(__name__, sys.argv):
-    out_fname = op.join(out_dir, f'sub-{sub}_pca_svm_data.npz')
+    out_fname = op.join(out_dir, f'sub-{sub}_fa_svm_data.npz')
     if op.isfile(out_fname):
         continue
     n_epochs = None  # check that the number of epochs is the same
@@ -197,20 +197,22 @@ for sub in get_subjects(__name__, sys.argv):
                  np.repeat(1, tfr_data[event]['data'].shape[0])])
             X_train, X_test, y_train, y_test = \
                 train_test_split(X, y, test_size=0.2, random_state=99)
-            pca = PCA(n_components=n_components_use,
-                      svd_solver='randomized', whiten=True).fit(X_train)
-            pca_vars[event][name_str] = pca.explained_variance_ratio_
-            X_train_pca = pca.transform(X_train)
-            X_test_pca = pca.transform(X_test)
+            fa = FactorAnalysis(n_components=n_components_use,
+                                rotation='varimax').fit(X_train)
+            var_totals = np.sum(fa.components_**2, axis=1)
+            fa_vars[event][name_str] = \
+                var_totals / (var_totals.sum() + fa.noise_variance_.sum())
+            X_train_fa = fa.transform(X_train)
+            X_test_fa = fa.transform(X_test)
             classifier = SVC(kernel='linear', random_state=99)
-            classifier.fit(X_train_pca, y_train)
-            score = classifier.score(X_test_pca, y_test)
+            classifier.fit(X_train_fa, y_train)
+            score = classifier.score(X_test_fa, y_test)
             scores[event][name_str] = score
             if n_epochs is None:
                 n_epochs = (y_train.size, y_test.size)
             else:
                 assert n_epochs == (y_train.size, y_test.size)
-            eigenvectors = pca.components_.reshape(
+            eigenvectors = fa.components_.reshape(
                 (n_components_use, len(tfr_data[event]['freqs']),
                  tfr_data[event]['times'].size))
             image = np.sum(
@@ -219,7 +221,7 @@ for sub in get_subjects(__name__, sys.argv):
             images[event][name_str] = image
             svm_coef[event][name_str] = classifier.coef_[0]
             # diagnostic plots
-            pred = classifier.predict(X_test_pca)
+            pred = classifier.predict(X_test_fa)
             tp = np.where(np.logical_and(pred == y_test, y_test == 1))[0]
             fp = np.where(np.logical_and(pred != y_test, y_test == 1))[0]
             tn = np.where(np.logical_and(pred == y_test, y_test == 0))[0]
@@ -230,6 +232,7 @@ for sub in get_subjects(__name__, sys.argv):
                     score, image, y_test, tp, fp, tn, fn)
             except Exception as e:
                 print(e)  # error for no data in a category, fix later
-    np.savez_compressed(out_fname, n_epochs=n_epochs, clusters=clusters,
-                        n_components=n_components_use, pca_vars=pca_vars,
-                        svm_coef=svm_coef, scores=scores, images=images)
+    np.savez_compressed(
+        out_fname, n_epochs=n_epochs, clusters=clusters,
+        n_components=n_components_use, fa_vars=fa_vars, svm_coef=svm_coef,
+        scores=scores, images=images)

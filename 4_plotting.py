@@ -17,7 +17,7 @@ from sklearn.decomposition import PCA
 
 from scipy import stats
 
-from utils import load_raw, compute_tfr
+from utils import load_raw, compute_tfr, DESTRIEUX_DICT
 
 from params import PLOT_DIR as plot_dir
 from params import BIDS_ROOT as bids_root
@@ -60,8 +60,8 @@ cmap = plt.get_cmap('viridis')
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 
 # get svm information
-scores, null_scores, clusters, images, null_images = \
-    dict(), dict(), dict(), dict(), dict()
+scores, null_scores, clusters, images, null_images, pca_vars = \
+    dict(), dict(), dict(), dict(), dict(), dict()
 for sub in subjects:
     with np.load(op.join(data_dir, f'sub-{sub}_pca_svm_data.npz'),
                  allow_pickle=True) as data:
@@ -70,6 +70,14 @@ for sub in subjects:
         clusters.update(data['clusters'].item())
         images.update(data['images'].item()['event'])
         null_images.update(data['images'].item()['null'])
+        pca_vars.update(data['pca_vars'].item())
+
+print('Event variance explained {}+/-{}'.format(
+    np.mean(np.sum(np.array(list(pca_vars['event'].values())), axis=1)),
+    np.std(np.sum(np.array(list(pca_vars['event'].values())), axis=1))))
+print('Null variance explained {}+/-{}'.format(
+    np.mean(np.sum(np.array(list(pca_vars['null'].values())), axis=1)),
+    np.std(np.sum(np.array(list(pca_vars['null'].values())), axis=1))))
 
 
 spec_shape = images[list(images.keys())[0]].shape
@@ -152,7 +160,7 @@ for sub in subjects:  # first, find associated labels
     pos = montage.get_positions()['ch_pos']
     for ch_name, this_pos in pos.items():
         ch_name = ch_name.replace(' ', '')
-        ch_pos[f'{sub}{ch_name}'] = this_pos
+        ch_pos[f'sub-{sub}_ch-{ch_name}'] = this_pos
 
 
 ch_labels = dict()  # channel labels in individual space
@@ -169,7 +177,7 @@ for sub in subjects:  # first, find associated labels
         aseg=aseg, dist=3)[0]
     for ch_name, labels in sub_labels.items():
         ch_name = ch_name.replace(' ', '')
-        ch_labels[f'{sub}{ch_name}'] = labels
+        ch_labels[f'sub-{sub}_ch-{ch_name}'] = labels
 
 
 def format_label(label, combine_hemi=False, cortex=True):
@@ -191,6 +199,10 @@ def format_label(label, combine_hemi=False, cortex=True):
         if 'rh-' in label or 'right-' in label:
             label = 'Right ' + label.replace('rh-', '').replace('right-', '')
     return label.replace('-', ' ').title().strip()
+
+
+def format_label_destrieux(label, combine_hemi=False, cortex=True):
+    return DESTRIEUX_DICT[label]
 
 
 #########
@@ -259,9 +271,19 @@ fn = np.where(np.logical_and(pred != y_test, y_test == 0))[0]
 
 sr = 800 / 1200  # screen ratio
 
+x_min, x_max = X_test_pca[:, 0].min() * 1.1, X_test_pca[:, 0].max() * 1.1
+y_min, y_max = X_test_pca[:, 1].min() * 1.1, X_test_pca[:, 1].max() * 1.1
+XX, YY = np.meshgrid(np.linspace(x_min, x_max, 1000),
+                     np.linspace(y_min, y_max, 1000))
+XY = np.zeros((XX.size, 50))  # n_components == 50
+XY[:, 0] = XX.ravel()
+XY[:, 1] = YY.ravel()
+ZZ = classifier.decision_function(XY)
+ZZ = ZZ.reshape(XX.shape)
+
 fig, (ax, ax2) = plt.subplots(2, 1, figsize=(6, 8),
                               gridspec_kw={'height_ratios': [1, 2]})
-ax.text(0, 1.1, 'a', fontsize=18)
+fig.text(0.05, 0.9, 'a', fontsize=18)
 ax.axis('off')
 # fixation 700 + blank 700 + go 1200 + iti 4000 = 6600
 ax.axis([-0.02, 6.62, -1, 1])
@@ -323,7 +345,7 @@ ax.text(4, -0.85, 'Null Epoch\n-2500 to -1500 ms\nrelative to end of trial',
         va='center', ha='center', fontsize=8, color='green', alpha=0.5)
 
 ax = ax2
-ax.text(0, 22.1, 'b', fontsize=18)
+fig.text(0.05, 0.6, 'b', fontsize=18)
 ax.axis('off')
 ax.set_xlim([-0.1, 13.1])
 ax.set_ylim([-2.1, 22.1])
@@ -408,9 +430,9 @@ ax.fill([8.625, 7.875, 7.875, 7.625, 7.875, 7.875, 8.625, 8.625],
         [4, 4, 4.5, 3, 1.5, 2, 2, 4], color='tab:blue')
 
 # svm
-ax.text(6, 5.25, 'SVM Coefficients', ha='center')
+ax.text(6, 6, 'SVM Coefficients', ha='center')
 ax.plot(np.linspace(4.5, 7.5, classifier.coef_[0].size),
-        4.5 + classifier.coef_[0] / abs(classifier.coef_[0]).max())
+        5.25 + classifier.coef_[0] / abs(classifier.coef_[0]).max())
 ax.imshow(image[::-1], extent=(4.5, 7.5, -2, 4), aspect='auto', cmap='viridis')
 ax.text(2.5, 4.75, 'Classify', ha='center', fontsize=8)
 ax.fill(1.5 + 3.5 * np.array([0.75, 0.25, 0.25, 0, 0.25, 0.25, 0.75, 0.75]),
@@ -431,16 +453,30 @@ ax.plot(np.linspace(0, 1.25, X_test_pca.shape[1]),
          np.linspace(-0.5, 3, n_epochs)[:, None]).T, linewidth=0.5)
 ax.text(0.625, -1.5, '...', ha='center', fontsize=24, color=(0.5, 0.5, 0.5))
 
-# confusion matrix
+# decision boundary
+ax.contourf((XX - x_min) / x_max / 1.5, (YY - y_min) / y_max * 1.5 + 4.25, ZZ,
+            cmap='RdBu', levels=20)
+ax.scatter((X_test_pca[y_test == 0, 0] - x_min) / x_max / 1.5,
+           (X_test_pca[y_test == 0, 1] - y_min) / y_max * 1.5 + 4.25,
+           marker='o', color='r', s=0.5)
+ax.scatter((X_test_pca[y_test == 1, 0] - x_min) / x_max / 1.5,
+           (X_test_pca[y_test == 1, 1] - y_min) / y_max * 1.5 + 4.25,
+           marker='o', color='b', s=0.5)
+'''
 ax.text(0.5, 6.5, 'Confusion Matrix', ha='center')
+ax.text(-0.25, 5.4, 'TP', ha='center', va='center', fontsize=8)
 ax.text(0.25, 5.4, f'{tp.size}', ha='center', va='center', fontsize=8)
+ax.text(1.25, 5.4, 'FP', ha='center', va='center', fontsize=8)
 ax.text(0.75, 5.4, f'{fp.size}', ha='center', va='center', fontsize=8)
+ax.text(-0.25, 4.2, 'FN', ha='center', va='center', fontsize=8)
 ax.text(0.25, 4.2, f'{fn.size}', ha='center', va='center', fontsize=8)
+ax.text(1.25, 4.2, 'FN', ha='center', va='center', fontsize=8)
 ax.text(0.75, 4.2, f'{tn.size}', ha='center', va='center', fontsize=8)
 ax.plot([0, 1, 1, 0, 0],
         [3.5, 3.5, 6, 6, 3.5], color='black')
 ax.plot([0, 1], [4.75, 4.75], color='black')
 ax.plot([0.5, 0.5], [3.5, 6], color='black')
+'''
 
 # red outline
 ax.plot([0, 4.4, 4.4], [7.5, 7.5, 22], color='tab:red')
@@ -449,7 +485,7 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'schematic.{ext}'), dpi=300)
 
 # %%
-# Figure 3: Individual implant plots to show sampling
+# Figure 2: Individual implant plots to show sampling
 
 fig, axes = plt.subplots(len(subjects) // 2, 6, figsize=(12, 8))
 axes = axes.reshape(len(subjects), 3)
@@ -495,7 +531,7 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'coverage.{ext}'), dpi=300)
 
 # %%
-# Figure 4: histogram of classification accuracies
+# Figure 3: histogram of classification accuracies
 #
 # Radial basis function scores not shown, almost exactly the same
 
@@ -504,12 +540,12 @@ bins = np.linspace(binsize, 1, int(1 / binsize)) - binsize / 2
 fig, ax = plt.subplots()
 
 patches = ax.hist(list(scores.values()), bins=bins,
-                  alpha=0.5, color='b', density=True)[2]
+                  alpha=0.5, color='b')[2]
 for i, left_bin in enumerate(bins[:-1]):
     if left_bin > sig_thresh:
         patches[i].set_facecolor('r')
 ax.hist(list(null_scores.values()), bins=bins, alpha=0.5, color='gray',
-        density=True, label='null')
+        label='null')
 y_bounds = ax.get_ylim()
 ax.axvline(np.mean(list(scores.values())), *y_bounds, color='black')
 ax.axvline(np.mean(list(null_scores.values())), *y_bounds, color='gray')
@@ -524,17 +560,21 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'score_hist.{ext}'), dpi=300)
 
 print('Paired t-test p-value: {}'.format(
-    stats.ttest_rel(scores['event_scores'], scores['null_scores'])[1]))
+    stats.ttest_rel(list(scores.values()),
+                    list(null_scores.values()))[1]))
+print('Significant contacts {} / {}'.format(
+    (np.array(list(scores.values())) > sig_thresh).sum(), len(scores)))
 
 # %%
-# Figure 5: Plots of electrodes with high classification accuracies
+# Figure 4: Plots of electrodes with high classification accuracies
 
-fig = plt.figure(figsize=(8, 6))
-gs = fig.add_gridspec(3, 4)
+fig = plt.figure(figsize=(8, 8))
+gs = fig.add_gridspec(4, 4)
 axes = np.array([[fig.add_subplot(gs[i, j]) for j in range(3)]
                  for i in range(3)])
 cax = fig.add_subplot(gs[:2, 3])
 cax2 = fig.add_subplot(gs[2, 3])
+tax = fig.add_subplot(gs[3, :])
 for ax in axes.flatten():
     ax.axis('off')
     ax.invert_yaxis()
@@ -542,13 +582,10 @@ for ax in axes.flatten():
 
 # color contacts by accuracy
 brain = mne.viz.Brain(template, **brain_kwargs)
-norm = Normalize(vmin=sig_thresh, vmax=1)
-for score, sub, elec_name, number in zip(scores['event_scores'],
-                                         scores['sub'],
-                                         scores['elec_name'],
-                                         scores['number']):
+norm = Normalize(vmin=0, vmax=1)
+for name, score in scores.items():
     if score > sig_thresh:
-        x, y, z = ch_pos[f'{sub}{elec_name}{number}']
+        x, y, z = ch_pos[name]
         brain._renderer.sphere(center=(x, y, z),
                                color=cmap(norm(score))[:3],
                                scale=0.005)
@@ -568,14 +605,12 @@ fig.text(0.1, 0.85, 'a')
 
 # get labels
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
-                   'white-matter', 'wm-', 'cc_', 'cerebellum')
+                   'white-matter', 'wm-', 'cc_', 'cerebellum',
+                   'brain-stem')
 
 labels = dict()
-for score, sub, elec_name, number in zip(scores['event_scores'],
-                                         scores['sub'],
-                                         scores['elec_name'],
-                                         scores['number']):
-    these_labels = ch_labels[f'{sub}{elec_name}{number}']
+for name, score in scores.items():
+    these_labels = ch_labels[name]
     for label in these_labels:
         if any([kw in label.lower() for kw in ignore_keywords]):
             continue
@@ -598,17 +633,18 @@ axes[1, 1].imshow(brain.screenshot())
 brain.show_view(azimuth=120, elevation=100)
 axes[1, 2].imshow(brain.screenshot())
 brain.close()
-fig.text(0.1, 0.55, 'b')
+fig.text(0.1, 0.65, 'b')
 
 # colorbar
-gradient = np.linspace(sig_thresh, 1, 256)
+gradient = np.linspace(0, 1, 256)
 gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
 cax.imshow(gradient, aspect='auto', cmap=cmap)
 cax.set_xticks([])
 cax.invert_yaxis()
 cax.yaxis.tick_right()
-cax.set_yticks(np.array([0, 0.25, 0.5, 0.75, 1]) * 256)
-cax.set_yticklabels([0.5, 0.625, 0.75, 0.875, 1])
+cax.set_ylim(np.array([0.5, 1]) * 256)
+cax.set_yticks(np.array([0.5, 0.75, 1]) * 256)
+cax.set_yticklabels([0.5, 0.75, 1])
 cax.yaxis.set_label_position('right')
 cax.set_ylabel('Accuracy')
 
@@ -636,7 +672,7 @@ axes[2, 1].imshow(brain.screenshot())
 brain.show_view(azimuth=120, elevation=100)
 axes[2, 2].imshow(brain.screenshot())
 brain.close()
-fig.text(0.1, 0.3, 'c')
+fig.text(0.1, 0.45, 'c')
 
 # count colorbar
 gradient = np.linspace(0, 10, 256)
@@ -650,6 +686,9 @@ cax2.set_yticklabels(['2', '4', '6', '8', '10+'])
 cax2.yaxis.set_label_position('right')
 cax2.set_ylabel('Contact Count')
 
+# table of contact locations
+
+
 fig.subplots_adjust(hspace=0)
 pos = cax.get_position()
 cax.set_position((pos.x0, 0.35, 0.05, 0.5))
@@ -659,7 +698,7 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'high_accuracy.{ext}'), dpi=300)
 
 # %%
-# Figure 6: Accuracy by label region of interest
+# Figure 4: Accuracy by label region of interest
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel', 'cc_',
                    'wm', 'cerebellum')  # signal won't cross dura
