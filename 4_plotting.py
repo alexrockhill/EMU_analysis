@@ -26,7 +26,7 @@ from params import EVENTS as event_dict
 from params import SUBJECTS as subjects
 from params import TASK as task
 from params import TEMPLATE as template
-from params import ATLAS as aseg
+from params import ATLASES as asegs
 from params import ALPHA as alpha
 from params import LEFT_HANDED_SUBJECTS as lh_sub
 from params import FREQUENCIES as freqs
@@ -163,7 +163,8 @@ for sub in subjects:  # first, find associated labels
         ch_pos[f'sub-{sub}_ch-{ch_name}'] = this_pos
 
 
-ch_labels = dict()  # channel labels in individual space
+# channel labels in individual space
+ch_labels = {aseg: dict() for aseg in asegs}
 for sub in subjects:  # first, find associated labels
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
@@ -172,15 +173,16 @@ for sub in subjects:  # first, find associated labels
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
         coord_frame='head')
     montage.apply_trans(trans)
-    sub_labels = mne.get_montage_volume_labels(
-        montage, f'sub-{sub}', subjects_dir=subjects_dir,
-        aseg=aseg, dist=3)[0]
-    for ch_name, labels in sub_labels.items():
-        ch_name = ch_name.replace(' ', '')
-        ch_labels[f'sub-{sub}_ch-{ch_name}'] = labels
+    for aseg in asegs:
+        sub_labels = mne.get_montage_volume_labels(
+            montage, f'sub-{sub}', subjects_dir=subjects_dir,
+            aseg=aseg, dist=2)[0]
+        for ch_name, labels in sub_labels.items():
+            ch_name = ch_name.replace(' ', '')
+            ch_labels[aseg][f'sub-{sub}_ch-{ch_name}'] = labels
 
 
-def format_label(label, combine_hemi=False, cortex=True):
+def format_label_dk(label, combine_hemi=False, cortex=True):
     label = label.lower()
     # add spaces
     for kw in ('middle', 'inferior', 'superior', 'isthmus', 'temporal',
@@ -202,7 +204,8 @@ def format_label(label, combine_hemi=False, cortex=True):
 
 
 def format_label_destrieux(label, combine_hemi=False, cortex=True):
-    return DESTRIEUX_DICT[label]
+    return DESTRIEUX_DICT[f'ctx_{label}'] if f'ctx_{label}' in DESTRIEUX_DICT \
+        else DESTRIEUX_DICT[label]
 
 
 #########
@@ -568,13 +571,12 @@ print('Significant contacts {} / {}'.format(
 # %%
 # Figure 4: Plots of electrodes with high classification accuracies
 
-fig = plt.figure(figsize=(8, 8))
-gs = fig.add_gridspec(4, 4)
+fig = plt.figure(figsize=(8, 6))
+gs = fig.add_gridspec(3, 4)
 axes = np.array([[fig.add_subplot(gs[i, j]) for j in range(3)]
                  for i in range(3)])
 cax = fig.add_subplot(gs[:2, 3])
 cax2 = fig.add_subplot(gs[2, 3])
-tax = fig.add_subplot(gs[3, :])
 for ax in axes.flatten():
     ax.axis('off')
     ax.invert_yaxis()
@@ -610,7 +612,7 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
 
 labels = dict()
 for name, score in scores.items():
-    these_labels = ch_labels[name]
+    these_labels = ch_labels[asegs[0]][name]  # use plotting atlas
     for label in these_labels:
         if any([kw in label.lower() for kw in ignore_keywords]):
             continue
@@ -624,7 +626,7 @@ label_names = list(labels.keys())
 acc_colors = [cmap(norm(np.mean(labels[name]))) for name in label_names]
 
 brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
-brain.add_volume_labels(aseg=aseg, labels=label_names,
+brain.add_volume_labels(aseg=asegs[0], labels=label_names,
                         colors=acc_colors, alpha=1, smooth=0.9)
 brain.show_view(azimuth=60, elevation=100, distance=.3)
 axes[1, 0].imshow(brain.screenshot())
@@ -633,7 +635,7 @@ axes[1, 1].imshow(brain.screenshot())
 brain.show_view(azimuth=120, elevation=100)
 axes[1, 2].imshow(brain.screenshot())
 brain.close()
-fig.text(0.1, 0.65, 'b')
+fig.text(0.1, 0.6, 'b')
 
 # colorbar
 gradient = np.linspace(0, 1, 256)
@@ -642,15 +644,15 @@ cax.imshow(gradient, aspect='auto', cmap=cmap)
 cax.set_xticks([])
 cax.invert_yaxis()
 cax.yaxis.tick_right()
-cax.set_ylim(np.array([0.5, 1]) * 256)
-cax.set_yticks(np.array([0.5, 0.75, 1]) * 256)
-cax.set_yticklabels([0.5, 0.75, 1])
+cax.set_ylim(np.array([sig_thresh, 1]) * 256)
+cax.set_yticks(np.array([sig_thresh, 0.75, 1]) * 256)
+cax.set_yticklabels([np.round(sig_thresh, 2), 0.75, 1])
 cax.yaxis.set_label_position('right')
 cax.set_ylabel('Accuracy')
 
 # plot counts of electrodes per area
 counts = dict()
-for these_labels in ch_labels.values():
+for these_labels in ch_labels[asegs[0]].values():
     for label in these_labels:
         if any([kw in label.lower() for kw in ignore_keywords]):
             continue
@@ -663,7 +665,7 @@ for these_labels in ch_labels.values():
 density_colors = [cmap(min([counts[name] / 10, 1.])) for name in label_names]
 
 brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
-brain.add_volume_labels(aseg=aseg, labels=label_names,
+brain.add_volume_labels(aseg=asegs[0], labels=label_names,
                         colors=density_colors, alpha=1, smooth=0.9)
 brain.show_view(azimuth=60, elevation=100, distance=.3)
 axes[2, 0].imshow(brain.screenshot())
@@ -672,7 +674,7 @@ axes[2, 1].imshow(brain.screenshot())
 brain.show_view(azimuth=120, elevation=100)
 axes[2, 2].imshow(brain.screenshot())
 brain.close()
-fig.text(0.1, 0.45, 'c')
+fig.text(0.1, 0.33, 'c')
 
 # count colorbar
 gradient = np.linspace(0, 10, 256)
@@ -686,9 +688,6 @@ cax2.set_yticklabels(['2', '4', '6', '8', '10+'])
 cax2.yaxis.set_label_position('right')
 cax2.set_ylabel('Contact Count')
 
-# table of contact locations
-
-
 fig.subplots_adjust(hspace=0)
 pos = cax.get_position()
 cax.set_position((pos.x0, 0.35, 0.05, 0.5))
@@ -698,18 +697,16 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'high_accuracy.{ext}'), dpi=300)
 
 # %%
-# Figure 4: Accuracy by label region of interest
+# Figure 5: Accuracy by label region of interest
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel', 'cc_',
                    'wm', 'cerebellum')  # signal won't cross dura
-labels = set([label for labels in ch_labels.values() for label in labels
+labels = set([label for labels in ch_labels[asegs[1]].values()
+              for label in labels
               if not any([kw in label.lower() for kw in ignore_keywords])])
 label_scores = dict()
-for score, sub, elec_name, number in zip(scores['event_scores'],
-                                         scores['sub'],
-                                         scores['elec_name'],
-                                         scores['number']):
-    these_labels = ch_labels[f'{sub}{elec_name}{number}']
+for name, score in scores.items():
+    these_labels = ch_labels[asegs[1]][name]  # use table atlas
     for label in these_labels:
         if not any([kw in label.lower() for kw in ignore_keywords]):
             if label in label_scores:
@@ -723,25 +720,24 @@ fig.suptitle('Classification Accuracies by Label', color='w')
 
 for idx, label in enumerate(labels):
     for lh in (True, False):
-        for name, idxs in {'sig': sig, 'not_sig': not_sig}.items():
-            these_scores = [score for i, (sub, elec_name, number, score) in
-                            enumerate(zip(scores['sub'], scores['elec_name'],
-                                          scores['number'],
-                                          scores['event_scores']))
-                            if label in ch_labels[f'{sub}{elec_name}{number}']
-                            and i in idxs and (lh == (sub in lh_sub))]
+        for sig_label, names in {'sig': sig, 'not_sig': not_sig}.items():
+            these_scores = \
+                [scores[name] for name in names
+                 if label in ch_labels[asegs[1]][name] and
+                 (lh == (int(name.split('_')[0].replace(
+                     'sub-', '')) in lh_sub))]
             color = colors[label][:3] / 255
             if color.mean() > 0.9:
                 color *= 0.75  # gray out white
             # triangle if left hand used, hollow if not significant
             ax.scatter(these_scores, [idx] * len(these_scores),
                        color=color, marker='^' if lh else None,
-                       facecolors=None if name == 'sig' else 'none')
+                       facecolors=None if sig_label == 'sig' else 'none')
 
 
 ax.axis([0.25, 1, -0.75, len(labels) - 0.25])
 ax.set_yticks(range(len(label_scores)))
-ax.set_yticklabels([format_label(label) for label in labels])
+ax.set_yticklabels([format_label_dk(label) for label in labels])
 for tick, label in zip(ax.get_yticklabels(), labels):
     color = colors[label][:3] / 255
     tick.set_color('w' if color.max() < 0.6 or
@@ -756,7 +752,7 @@ for tick in ax.get_xticklabels():
     tick.set_color('w')
 
 
-ax.set_xlabel('Linear SVM Accuracy', color='w')
+ax.set_xlabel('Classification Accuracy', color='w')
 ax.set_ylabel('Anatomical Label', color='w')
 
 # make legend
@@ -779,7 +775,7 @@ for ext in exts:
 
 
 # %%
-# Figure 7: distribution of classification accuracies across
+# Figure 6: distribution of classification accuracies across
 # subjects compared to CSP.
 
 # decoding-specific parameters
@@ -795,11 +791,10 @@ binsize = 0.005
 bins = np.linspace(0, 1 - binsize, int(1 / binsize))
 for i, sub in enumerate(subjects):
     ax, ax2 = axes[i]
-    these_scores = scores[scores['sub'] == sub]
-    these_sig = [score for score in these_scores['event_scores']
-                 if score > sig_thresh]
-    these_not_sig = [score for score in these_scores['event_scores']
-                     if score <= sig_thresh]
+    these_scores = [scores[name] for name in scores if
+                    int(name.split('_')[0].replace('sub-', '')) == sub]
+    these_sig = [score for score in these_scores if score > sig_thresh]
+    these_not_sig = [score for score in these_scores if score <= sig_thresh]
     ax.violinplot(these_sig + these_not_sig, [0],
                   vert=False, showextrema=False)
     y = swarm(these_sig, bins=bins) / 50
@@ -836,8 +831,6 @@ for i, sub in enumerate(subjects):
         ax.set_xlabel('Test Accuracy')
         ax2.set_xlabel('Time (s)')
 
-
-fig.suptitle('CSP-SVM Comparison by Subject')
 for ext in exts:
     fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300)
 
