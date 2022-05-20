@@ -835,11 +835,13 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300)
 
 # %%
-# Figure 8: Contacts of interest
+# Figure 7: Contacts of interest
 
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
                    'white-matter', 'wm-')
-best_contact_idx = np.argsort(scores['event_scores'])[-3:][::-1]
+
+#                 pre-movement beta,       gamma,     alpha/post-movement beta
+contacts_of_int = ['sub-9_ch-LSSENS5', 'sub-2_ch-RSMA7', 'sub-1_ch-LSMA16']
 
 views = [dict(azimuth=35, elevation=70, distance=0.25),
          dict(azimuth=60, elevation=80, distance=0.25),
@@ -916,7 +918,7 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'best_electrodes.{ext}'), dpi=300)
 
 # %%
-# Figure 9: Feature maps
+# Figure 8: Feature maps
 
 fig, axes = plt.subplots(3, 2, figsize=(8, 8))
 for idx, ((svm_map, cluster_map), (ax1, ax2)) in enumerate(
@@ -962,7 +964,7 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'feature_map.{ext}'), dpi=300)
 
 # %%
-# Figure 10: Anatomical Locations of Significant Correlations Areas
+# Figure 9: Anatomical Locations of Significant Correlations Areas
 
 fig, axes = plt.subplots(len(areas), 5, figsize=(6.5, 10))
 
@@ -1058,7 +1060,7 @@ for ext in exts:
     fig.savefig(op.join(fig_dir, f'feature_anatomy.{ext}'), dpi=300)
 
 # %%
-# Figure 11: Anatomical Locations of Spectral Features
+# Figure 10: Anatomical Locations of Spectral Features
 
 # plot the anatomical locations of each of the time-frequency modulations
 # of interest
