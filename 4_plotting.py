@@ -842,6 +842,13 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
 
 #                 pre-movement beta,       gamma,     alpha/post-movement beta
 contacts_of_int = ['sub-9_ch-LSSENS5', 'sub-2_ch-RSMA7', 'sub-1_ch-LSMA16']
+# sub-1_ch-LPM1
+# sub-1_ch-LPIT4 beta/gamma
+# sub-2_ch-LATP5 beta/rebound
+# sub-1_ch-LPCN4
+# sub-1_ch-LPCN7
+# sub-2_ch-LATP5
+# sub-5_ch-RPLS4
 
 views = [dict(azimuth=35, elevation=70, distance=0.25),
          dict(azimuth=60, elevation=80, distance=0.25),
