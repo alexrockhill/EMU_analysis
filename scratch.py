@@ -1,3 +1,143 @@
+# %%
+# Figure 10: Anatomical Locations of Spectral Features
+
+# plot the anatomical locations of each of the time-frequency modulations
+# of interest
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
+                   'hypointensities', 'cc_', 'cerebellum')
+
+aseg_img = nib.load(op.join(subjects_dir, template, 'mri', aseg + '.mgz'))
+aseg_data = np.array(aseg_img.dataobj)
+
+label_dict = dict()
+label_colors = dict()
+label_pos = dict()
+name_freqs = dict()
+raw_labels = set()
+# then, go through each area and direction of interest
+for name, directions in area_directions.items():
+    for direction in directions:
+        d_name = u'\u2B06 ' + name if direction == 1 else u'\u2B07 ' + name
+        if d_name not in name_freqs:
+            name_freqs[d_name] = areas[name][1]
+        # finally, go through the area proportions for each electrode and
+        # match them up
+        for ch_name, prop in area_contacts[name].items():
+            if (direction == 1 and prop > prop_thresh) or \
+                    (direction == -1 and prop < -prop_thresh):
+                these_labels = [label for label in ch_labels[asegs[1]][ch_name]
+                                if not any([kw in label.lower() for
+                                            kw in ignore_keywords])]
+                for label in these_labels:
+                    f_label = format_label_dk(label, combine_hemi=True,
+                                              cortex=False)
+                    if f_label not in label_colors:
+                        label_colors[f_label] = colors[label][:3] / 255
+                    if f_label not in label_pos:
+                        label_pos[f_label] = mne.transforms.apply_trans(
+                            aseg_img.header.get_vox2ras_tkr(),
+                            np.array(np.where(
+                                aseg_data == lut[label])).mean(axis=1))
+                    raw_labels.add(label)
+                    if d_name in label_dict:
+                        label_dict[d_name].add(f_label)
+                    else:
+                        label_dict[d_name] = set([f_label])
+
+
+# sort by polar coordinates to wrap frontal to temporal
+label_pos_array = np.array(list(label_pos.values()))
+# first, rotate axes so left is up so theta can run from -pi to pi
+label_pos_rot = mne.transforms.apply_trans(
+    mne.transforms.rotation(y=np.pi / 2), label_pos_array)
+# then get theta which is really elevation but from -pi to pi
+label_pos_theta = mne.transforms._cart_to_sph(label_pos_rot)[:, 1]
+# shift from -pi to pi by +pi to 0 to 2 * pi and then shift to the
+# phase we want to start with
+roi_phase = label_pos_theta[list(label_pos.keys()).index('Putamen')] + np.pi
+label_pos_theta = np.mod((label_pos_theta + np.pi - roi_phase), 2 * np.pi)
+# get the order
+label_pos_order = dict(zip(label_pos.keys(), label_pos_theta))
+labels = sorted(label_pos, key=lambda label: label_pos_order.get(label))
+names = sorted(label_dict.keys(), key=lambda name: name_freqs[name])
+n_names = len(names)
+
+cmap = plt.get_cmap('Set1')
+name_colors = [cmap(i) for i in range(n_names)]
+label_cmap = LinearSegmentedColormap.from_list(
+    'label_cmap', name_colors, N=n_names)
+
+brain = mne.viz.Brain(template, hemi=None,
+                      **dict(brain_kwargs, background='black'))
+brain.add_volume_labels(
+    aseg, labels=list(raw_labels),
+    colors=[label_colors[format_label_dk(label, combine_hemi=True,
+                                         cortex=False)]
+            for label in raw_labels], fill_hole_size=1)
+
+
+fig, axes = plt.subplots(5, 3, figsize=(8, 12), facecolor='black',
+                         subplot_kw=dict(projection='polar'))
+gs = axes[0, 0].get_gridspec()  # for adjustments later
+
+node_angles = mne.viz.circular_layout(
+    ['pattern'] + labels, ['pattern'] + labels,
+    start_pos=90 - (360 / (len(labels) + 3)),
+    group_boundaries=[0, 1])
+
+for ax, name in zip(axes.flatten(), names):
+    node_names = [name] + labels
+    con = np.zeros((len(node_names), len(node_names))) * np.nan
+    for label in label_dict[name]:
+        node_idx = node_names.index(label)
+        label_color = names.index(name) / n_names
+        con[0, node_idx] = con[node_idx, 0] = label_color  # symmetric
+
+    node_colors = [name_colors[names.index(name)]] + \
+        [label_colors[label] for label in labels]
+
+    mne.viz.circle._plot_connectivity_circle(
+        con, [''] * len(node_names), node_angles=node_angles, title=name,
+        node_colors=node_colors, node_height=4,
+        vmin=0, vmax=1, colormap=label_cmap,
+        textcolor=name_colors[names.index(name)], colorbar=False, linewidth=1,
+        ax=ax, show=False)
+
+brain.show_view(azimuth=120, elevation=100, distance=0.325)
+axes[3, 2].remove()  # switch these two out to cartesian
+axes[3, 2] = fig.add_subplot(gs[3, 2])
+axes[3, 2].imshow(brain.screenshot())
+brain.show_view(azimuth=80, elevation=180, distance=0.36)
+axes[4, 2].remove()
+axes[4, 2] = fig.add_subplot(gs[4, 2])
+axes[4, 2].imshow(brain.screenshot())
+
+axes[3, 2].set_title('Left front', color='w')
+axes[4, 2].set_title('Bottom up', color='w')
+
+# add plot to bottom left 4 plots
+for ax in axes[3:, :2].flatten():
+    ax.remove()  # remove small axes
+ax = fig.add_subplot(gs[3:, :2], polar=True)  # add back a big axis
+pos = ax.get_position()
+mne.viz.circle._plot_connectivity_circle(
+    np.zeros(con.shape) * np.nan, [''] + labels, node_angles=node_angles,
+    node_colors=node_colors, node_height=4, vmin=0, vmax=1, fontsize_names=8,
+    colormap=label_cmap, textcolor='white', colorbar=False, linewidth=1,
+    ax=ax, show=False)
+
+fig.subplots_adjust(hspace=0.1, wspace=0, top=0.95, bottom=0, left=0, right=1)
+# adjust big axis, bring in
+ax.set_position((pos.x0 + 0.05, pos.y0 + 0.02,
+                 pos.width - 0.1, pos.height - 0.1))
+
+fig.text(0.02, 0.98, 'a', color='w', fontsize=12)
+fig.text(0.02, 0.38, 'b', color='w', fontsize=12)
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'feature_labels.{ext}'),
+                facecolor=fig.get_facecolor(), dpi=300)
+
+
 '''
 The average magnitude of significant coefficients was also plotted (Figure 8c) to determine the relative strength of significant correlations. In Figure 8a, coefficients that were much larger than the significance threshold were counted the same as those that were closer to the threshold, whereas in Figure 8c large magnitudes brought up the average. The patterns were similar between Figure 8a and Figure 8c; coefficients for time-frequency points that were more abundant were also larger on average. In addition, the primary movement-related oscillatory patterns (pre-movement beta desynchronization, beta rebound, post-movement gamma power increase and alpha power modulation pre-movement) had larger magnitude coefficients. Finally, the average accuracy of each significant coefficient is plotted (Figure 8d). Interestingly, there is not a strong pattern where specific time-frequency points, when they are large enough to be significant, predict higher classification accuracies.
 '''

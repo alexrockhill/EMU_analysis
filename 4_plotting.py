@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 import mne
+from mne.gui._ieeg_locate_gui import _CMAP
 import nibabel as nib
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -30,6 +31,7 @@ from params import ATLASES as asegs
 from params import ALPHA as alpha
 from params import LEFT_HANDED_SUBJECTS as lh_sub
 from params import FREQUENCIES as freqs
+from params import EXCLUDE_CH as exclude_ch
 
 freqs = np.array([0] + list(freqs))  # add evoked
 
@@ -60,8 +62,8 @@ cmap = plt.get_cmap('viridis')
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 
 # get svm information
-scores, null_scores, clusters, images, null_images, pca_vars = \
-    dict(), dict(), dict(), dict(), dict(), dict()
+scores, null_scores, clusters, images, null_images, pca_vars, null_pca_vars = \
+    dict(), dict(), dict(), dict(), dict(), dict(), dict()
 for sub in subjects:
     with np.load(op.join(data_dir, f'sub-{sub}_pca_svm_data.npz'),
                  allow_pickle=True) as data:
@@ -70,14 +72,28 @@ for sub in subjects:
         clusters.update(data['clusters'].item())
         images.update(data['images'].item()['event'])
         null_images.update(data['images'].item()['null'])
-        pca_vars.update(data['pca_vars'].item())
+        pca_vars.update(data['pca_vars'].item()['event'])
+        null_pca_vars.update(data['pca_vars'].item()['null'])
+
+# exclude epileptogenic contacts
+for name in exclude_ch:
+    if name not in scores:
+        print(f'{name} not found')
+        continue
+    scores.pop(name)
+    null_scores.pop(name)
+    clusters.pop(name)
+    images.pop(name)
+    null_images.pop(name)
+    pca_vars.pop(name)
+    null_pca_vars.pop(name)
 
 print('Event variance explained {}+/-{}'.format(
-    np.mean(np.sum(np.array(list(pca_vars['event'].values())), axis=1)),
-    np.std(np.sum(np.array(list(pca_vars['event'].values())), axis=1))))
+    np.mean(np.sum(np.array(list(pca_vars.values())), axis=1)),
+    np.std(np.sum(np.array(list(pca_vars.values())), axis=1))))
 print('Null variance explained {}+/-{}'.format(
-    np.mean(np.sum(np.array(list(pca_vars['null'].values())), axis=1)),
-    np.std(np.sum(np.array(list(pca_vars['null'].values())), axis=1))))
+    np.mean(np.sum(np.array(list(null_pca_vars.values())), axis=1)),
+    np.std(np.sum(np.array(list(null_pca_vars.values())), axis=1))))
 
 
 spec_shape = images[list(images.keys())[0]].shape
@@ -91,9 +107,9 @@ not_sig = [name for name, score in scores.items()
 sig = [name for name, score in scores.items()
        if score > sig_thresh]
 
-# compute null distribution thresholds per subject and per image
+# compute null distribution thresholds per image
 image_thresh = np.quantile(
-    abs(np.array(list(null_images.values()))), 1 - alpha, axis=0)
+    abs(np.array(list(null_images.values()))), 1 - alpha)
 
 # feature map computation
 feature_maps = np.zeros((3, 2) + spec_shape)
@@ -108,7 +124,6 @@ for name, image in images.items():
         feature_maps[1, 1] += ~np.isnan(ch_cluster) * ch_cluster > 0
         feature_maps[2, 1] += score * ~np.isnan(ch_cluster)
 
-
 # normalize
 feature_maps[1, 0] /= feature_maps[0, 0]  # scale by count
 feature_maps[2, 0] /= feature_maps[0, 0]  # scale by count
@@ -118,7 +133,7 @@ feature_maps[2, 1] /= feature_maps[0, 1]  # scale by count
 feature_maps[0, 1] /= feature_maps[0, 1].max()
 
 # time-frequency areas of interest
-prop_thresh = 0.33
+prop_thresh = 1 / 3
 areas = {'Pre-Movement Beta': (1, 22, 37, -0.35, -0.05),
          'Delta': (0, 1, 4, -0.5, 0.25),
          'Event-Related Potential': (1, 0, 0, -0.5, 0.5),
@@ -148,11 +163,27 @@ for name, cluster in clusters.items():
         area_contacts[area][name] = np.nansum(this_area) / this_area.size
 
 
-ch_pos = dict()  # channel positions in template space
+# channel positions in template and individual
+ch_pos = {'template': dict(), 'individual': dict()}
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 for sub in subjects:  # first, find associated labels
+    # individual
     info = mne.io.read_info(op.join(
         subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
+    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
+    montage.apply_trans(trans)
+    pos = montage.get_positions()['ch_pos']
+    for ch_name, this_pos in pos.items():
+        ch_name = ch_name.replace(' ', '')
+        ch_pos['individual'][f'sub-{sub}_ch-{ch_name}'] = this_pos
+
+    # template
+    info = mne.io.read_info(op.join(
+        subjects_dir, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_template-{template}_task-{task}_info.fif'))
     montage = mne.channels.make_dig_montage(
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
         coord_frame='head')
@@ -160,7 +191,7 @@ for sub in subjects:  # first, find associated labels
     pos = montage.get_positions()['ch_pos']
     for ch_name, this_pos in pos.items():
         ch_name = ch_name.replace(' ', '')
-        ch_pos[f'sub-{sub}_ch-{ch_name}'] = this_pos
+        ch_pos['template'][f'sub-{sub}_ch-{ch_name}'] = this_pos
 
 
 # channel labels in individual space
@@ -509,7 +540,33 @@ for i, sub in enumerate(subjects):
                                     f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     brain = mne.viz.Brain(f'sub-{sub}', **brain_kwargs)
-    brain.add_sensors(info, trans)
+    groups = dict()
+    for ch_name in info.ch_names:
+        elec_name = ''.join([letter for letter in ch_name if
+                             not letter.isdigit() and letter != ' '])
+        groups[ch_name] = elec_name
+    chs = {ch['ch_name']: mne.transforms.apply_trans(trans, ch['loc'][:3])
+           for ch in info['chs']}
+    for idx, group in enumerate(np.unique(list(groups.values()))):
+        pos = np.array([chs[ch] for i, ch in enumerate(info.ch_names)
+                        if groups[ch] == group])
+        # first, the insertion will be the point farthest from the origin
+        # brains are a longer posterior-anterior, scale for this (80%)
+        insert_idx = np.argmax(np.linalg.norm(pos * np.array([1, 0.8, 1]),
+                                              axis=1))
+        # second, find the farthest point from the insertion
+        target_idx = np.argmax(np.linalg.norm(pos[insert_idx] - pos, axis=1))
+        # third, make a unit vector and to add to the insertion for the bolt
+        elec_v = pos[insert_idx] - pos[target_idx]
+        elec_v /= np.linalg.norm(elec_v)
+        brain._renderer.tube(  # 30 mm outside head
+            [pos[target_idx]], [pos[insert_idx] + elec_v * 0.03],
+            radius=0.001, color=_CMAP(idx)[:3])[0]
+        for (x, y, z) in pos:
+            brain._renderer.sphere(center=(x, y, z), color=_CMAP(idx)[:3],
+                                   scale=0.005)
+    # will add above code to add_sensors eventually
+    # brain.add_sensors(info, trans)
     brain.show_view(azimuth=60, elevation=100, distance=0.325)
     axes[i, 0].imshow(brain.screenshot())
     brain.show_view(azimuth=90, elevation=0, distance=0.36)
@@ -587,7 +644,7 @@ brain = mne.viz.Brain(template, **brain_kwargs)
 norm = Normalize(vmin=0, vmax=1)
 for name, score in scores.items():
     if score > sig_thresh:
-        x, y, z = ch_pos[name]
+        x, y, z = ch_pos['template'][name]
         brain._renderer.sphere(center=(x, y, z),
                                color=cmap(norm(score))[:3],
                                scale=0.005)
@@ -840,21 +897,14 @@ for ext in exts:
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
                    'white-matter', 'wm-')
 
-#                 pre-movement beta,       gamma,     alpha/post-movement beta
-contacts_of_int = ['sub-9_ch-LSSENS5', 'sub-2_ch-RSMA7', 'sub-1_ch-LSMA16']
-# sub-1_ch-LPM1
-# sub-1_ch-LPIT4 beta/gamma
-# sub-2_ch-LATP5 beta/rebound
-# sub-1_ch-LPCN4
-# sub-1_ch-LPCN7
-# sub-2_ch-LATP5
-# sub-5_ch-RPLS4
+#              pre-movement beta,       gamma,     alpha/post-movement beta
+contacts_int = ['sub-1_ch-LPM1', 'sub-5_ch-RPLS4', 'sub-10_ch-LACING6']
 
-views = [dict(azimuth=35, elevation=70, distance=0.25),
-         dict(azimuth=60, elevation=80, distance=0.25),
-         dict(azimuth=40, elevation=60, distance=0.3)]
+views = [dict(azimuth=-170, elevation=85, distance=0.25),
+         dict(azimuth=50, elevation=15, distance=0.25),
+         dict(azimuth=-160, elevation=30, distance=0.25)]
 
-fig, axes = plt.subplots(3, 2, figsize=(6, 8))
+fig, axes = plt.subplots(len(contacts_int), 2, figsize=(6, 8))
 axes[-1, 0].set_xlabel('Time (s)')
 for ax in axes[:, 1]:
     ax.axis('off')
@@ -865,35 +915,27 @@ for ax in axes[:, 0]:
     ax.set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
 
 
-for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
-    sub = scores['sub'][idx]
-    elec_name = scores['elec_name'][idx]
-    number = scores['number'][idx]
-    score = scores['event_scores'][idx]
-    ax.set_title(f'Subject {sub} {elec_name} {int(number)} '
-                 'Test Accuracy {:.2f}'.format(score))
-    info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
-    info.pick_channels([ch for ch in info.ch_names if elec_name in ch])
-    trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
-    montage = mne.channels.make_dig_montage(
-        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
-        coord_frame='head')
-    montage.apply_trans(trans)
-    labels = mne.get_montage_volume_labels(
-        montage, f'sub-{sub}', subjects_dir=subjects_dir,
-        aseg=aseg, dist=5)[0].values()
-    labels = set([label for these_labels in labels for label in these_labels
-                  if not any([kw in label.lower() for kw in ignore_keywords])])
-    locs = np.array(list(montage.get_positions()['ch_pos'].values()))
+for (ax, ax2), name, view in zip(axes, contacts_int, views):
+    sub = name.split('_ch-')[0].replace('sub-', '')
+    elec_name = ''.join([letter for letter in name.split('ch-')[1]
+                         if not letter.isdigit()])
+    title_name = name.replace('sub-', 'Subject ').replace(
+        '_ch-', ' ').replace(elec_name, elec_name + ' ')
+    score = scores[name]
+    ax.set_title(f'{title_name}, Test Accuracy {np.round(score, 2)}')
+    elec = [name2 for name2 in ch_pos['individual'] if
+            f'sub-{sub}_' in name2 and elec_name in name2]
+    labels = set([label for name2 in elec for label in
+                  ch_labels[asegs[1]][name2] if
+                  not any([kw in label.lower() for kw in ignore_keywords])])
     # spectrogram plot
-    image = images[f'sub-{sub}_ch-{elec_name}{int(number)}']
-    cluster = clusters[f'sub-{sub}_ch-{elec_name}{int(number)}']
+    image = images[name]
+    cluster = clusters[name]
     mask = ~np.isnan(cluster)
     X, Y = np.meshgrid(range(image.shape[1]), range(image.shape[0]))
     img = ax.imshow(image, aspect='auto', vmin=-0.05, vmax=0.05,
                     cmap='viridis')
-    ax.contour(X, Y, mask, levels=[0.5], colors=['r'], alpha=0.25)
+    ax.contour(X, Y, mask, levels=[0.5], colors=['r'], linewidths=0.5)
     ax.set_yticks(range(len(freqs)))
     ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
                         enumerate(np.array(freqs).round(
@@ -903,26 +945,25 @@ for (ax, ax2), idx, view in zip(axes, best_contact_idx, views):
     fig.colorbar(img, ax=ax)
     # anatomy plot
     brain = mne.viz.Brain(f'sub-{sub}', **dict(brain_kwargs, alpha=0.25))
-    for loc, name in zip(locs, montage.ch_names):
-        is_best = int(name.replace(elec_name, '').replace(' ', '')) == number
-        brain._renderer.sphere(loc, 'black' if is_best else 'gray', 0.005)
-    brain.add_volume_labels(aseg='aparc+aseg', labels=labels,
-                            alpha=0.5, legend=False, fill_hole_size=1)
-    ch_names = [name.replace(' ', '') for name in info.ch_names]  # fix space
-    loc = locs[ch_names.index(f'{elec_name}{int(number)}')]
-    brain.show_view(focalpoint=loc, **view)
-    brain.enable_depth_peeling()
+    for name2 in elec:
+        brain._renderer.sphere(
+            ch_pos['individual'][name2],
+            'black' if name2 == name else 'gray', 0.005)
+    brain.add_volume_labels(aseg=asegs[1], labels=labels,
+                            alpha=0.25, legend=False, fill_hole_size=1)
+    # focus on halfway
+    brain.show_view(focalpoint=ch_pos['individual'][elec[len(elec) // 2]],
+                    **view)
     ax2.imshow(brain.screenshot())
     for label in labels:  # empty plots for legend handling
         ax2.scatter([np.nan], [np.nan], color=colors[label][:3] / 255,
-                    marker='s', label=format_label(label))
+                    marker='s', label=format_label_dk(label))
     ax2.legend(loc='lower left', fontsize='xx-small')
     brain.close()
 
-
 fig.tight_layout()
 for ext in exts:
-    fig.savefig(op.join(fig_dir, f'best_electrodes.{ext}'), dpi=300)
+    fig.savefig(op.join(fig_dir, f'contacts_of_interest.{ext}'), dpi=300)
 
 # %%
 # Figure 8: Feature maps
@@ -930,7 +971,7 @@ for ext in exts:
 fig, axes = plt.subplots(3, 2, figsize=(8, 8))
 for idx, ((svm_map, cluster_map), (ax1, ax2)) in enumerate(
         zip(feature_maps, axes)):
-    vmin = 0 if idx < 2 else sig_thresh
+    vmin = 0 if idx < 2 else 0.75  # sig_thresh
     c = ax1.imshow(svm_map, vmin=vmin, vmax=1, cmap='viridis', aspect='auto')
     fig.colorbar(c, ax=ax1)
     c = ax2.imshow(cluster_map, vmin=vmin, vmax=1,
@@ -994,7 +1035,7 @@ idx = 0
 for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
     # SVM spectrogram coefficients
     ax = axes[idx][0]
-    ax.imshow(feature_maps[fm_idx, 1], vmin={0: 0, 1: 0, 2: 0, 3: 0.5}[fm_idx],
+    ax.imshow(feature_maps[fm_idx, 1], vmin={0: 0, 1: 0, 2: 0.75}[fm_idx],
               vmax=1, cmap='viridis', aspect='auto')
     fmin_idx = np.argmin(abs(freqs - fmin))
     fmax_idx = max([np.argmin(abs(freqs - fmax)), fmin_idx + 1])
@@ -1019,10 +1060,10 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
     ax.set_ylim([0, 50])
     # plot contacts
     brain = mne.viz.Brain(template, **brain_kwargs)
-    for (sub, elec_name, number), prop in area_contacts[area].items():
-        if prop > prop_thresh or prop < -prop_thresh:
+    for name, prop in area_contacts[area].items():
+        if abs(prop) > prop_thresh:
             brain._renderer.sphere(
-                center=ch_pos[f'{sub}{elec_name}{number}'],
+                center=ch_pos['template'][name],
                 color='yellow' if prop >= prop_thresh else 'blue',
                 scale=0.005)
     for view_idx, view in enumerate(
@@ -1090,16 +1131,15 @@ for name, directions in area_directions.items():
             name_freqs[d_name] = areas[name][1]
         # finally, go through the area proportions for each electrode and
         # match them up
-        for (sub, elec_name, number), prop in area_contacts[name].items():
+        for ch_name, prop in area_contacts[name].items():
             if (direction == 1 and prop > prop_thresh) or \
                     (direction == -1 and prop < -prop_thresh):
-                these_labels = [label for label in
-                                ch_labels[f'{sub}{elec_name}{number}']
+                these_labels = [label for label in ch_labels[asegs[1]][ch_name]
                                 if not any([kw in label.lower() for
                                             kw in ignore_keywords])]
                 for label in these_labels:
-                    f_label = format_label(label, combine_hemi=True,
-                                           cortex=False)
+                    f_label = format_label_dk(label, combine_hemi=True,
+                                              cortex=False)
                     if f_label not in label_colors:
                         label_colors[f_label] = colors[label][:3] / 255
                     if f_label not in label_pos:
@@ -1123,8 +1163,8 @@ label_pos_rot = mne.transforms.apply_trans(
 label_pos_theta = mne.transforms._cart_to_sph(label_pos_rot)[:, 1]
 # shift from -pi to pi by +pi to 0 to 2 * pi and then shift to the
 # phase we want to start with
-roi_phase = label_pos_theta[list(label_pos.keys()).index('Putamen')] + np.pi
-label_pos_theta = np.mod((label_pos_theta + np.pi - roi_phase), 2 * np.pi)
+roi_phase = label_pos_theta[list(label_pos.keys()).index('Putamen')]
+label_pos_theta = np.mod((label_pos_theta - roi_phase), 2 * np.pi) - np.pi
 # get the order
 label_pos_order = dict(zip(label_pos.keys(), label_pos_theta))
 labels = sorted(label_pos, key=lambda label: label_pos_order.get(label))
@@ -1134,74 +1174,72 @@ n_names = len(names)
 cmap = plt.get_cmap('Set1')
 name_colors = [cmap(i) for i in range(n_names)]
 label_cmap = LinearSegmentedColormap.from_list(
-    'label_cmap', name_colors, N=n_names)
+    'label_cmap', ['black'] + name_colors, N=n_names + 1)
 
 brain = mne.viz.Brain(template, hemi=None,
                       **dict(brain_kwargs, background='black'))
 brain.add_volume_labels(
     aseg, labels=list(raw_labels),
-    colors=[label_colors[format_label(label, combine_hemi=True,
-                                      cortex=False)]
+    colors=[label_colors[format_label_dk(label, combine_hemi=True,
+                                         cortex=False)]
             for label in raw_labels], fill_hole_size=1)
 
+label_image = np.zeros((len(labels), n_names), dtype=int)
+for i, name in enumerate(names):
+    for j, label in enumerate(labels):
+        if label in label_dict[name]:
+            label_image[j, i] = i + 1
 
-fig, axes = plt.subplots(5, 3, figsize=(8, 12), facecolor='black',
-                         subplot_kw=dict(projection='polar'))
-gs = axes[0, 0].get_gridspec()  # for adjustments later
+fig = plt.figure(figsize=(4, 8), facecolor='black')
+gs = fig.add_gridspec(2, 2, height_ratios=(3, 1))
 
-node_angles = mne.viz.circular_layout(
-    ['pattern'] + labels, ['pattern'] + labels,
-    start_pos=90 - (360 / (len(labels) + 3)),
-    group_boundaries=[0, 1])
-
-for ax, name in zip(axes.flatten(), names):
-    node_names = [name] + labels
-    con = np.zeros((len(node_names), len(node_names))) * np.nan
-    for label in label_dict[name]:
-        node_idx = node_names.index(label)
-        label_color = names.index(name) / n_names
-        con[0, node_idx] = con[node_idx, 0] = label_color  # symmetric
-
-    node_colors = [name_colors[names.index(name)]] + \
-        [label_colors[label] for label in labels]
-
-    mne.viz.circle._plot_connectivity_circle(
-        con, [''] * len(node_names), node_angles=node_angles, title=name,
-        node_colors=node_colors, node_height=4,
-        vmin=0, vmax=1, colormap=label_cmap,
-        textcolor=name_colors[names.index(name)], colorbar=False, linewidth=1,
-        ax=ax, show=False)
+# table of activations
+ax = fig.add_subplot(gs[0, :])
+ax.imshow(label_image, cmap=label_cmap)
+'''
+# add second color
+d = 0.475  # fudge factor to make triangles look good
+for i, name in enumerate(names):
+    for j, label in enumerate(labels):
+        if label_image[j, i]:
+            ax.plot([i - d, i - d, i + d, i + d, i - d],
+                    [j - d, j + d, j + d, j - d, j - d],
+                    color=label_colors[label], linewidth=0.5)
+'''
+ax.invert_yaxis()
+ax.xaxis.tick_top()
+ax.set_xticks(range(n_names))
+ax.set_xticklabels(names, color='w', rotation=90)
+for i, tick in enumerate(ax.get_xticklabels()):
+    tick.set_color(label_cmap(i + 1))
+    tick.set_fontsize(8)
+ax.set_yticks(range(len(labels)))
+ax.set_yticklabels(labels, color='w')
+for i, tick in enumerate(ax.get_yticklabels()):
+    tick.set_color(label_colors[labels[i]])
+    if len(labels[i]) > 30:
+        tick.set_fontsize(8)
 
 brain.show_view(azimuth=120, elevation=100, distance=0.325)
-axes[3, 2].remove()  # switch these two out to cartesian
-axes[3, 2] = fig.add_subplot(gs[3, 2])
-axes[3, 2].imshow(brain.screenshot())
+ax2 = fig.add_subplot(gs[1, 0])
+ax2.axis('off')
+ax2.imshow(brain.screenshot())
+ax2.set_title('Left front', color='w')
 brain.show_view(azimuth=80, elevation=180, distance=0.36)
-axes[4, 2].remove()
-axes[4, 2] = fig.add_subplot(gs[4, 2])
-axes[4, 2].imshow(brain.screenshot())
+ax3 = fig.add_subplot(gs[1, 1])
+ax3.axis('off')
+ax3.imshow(brain.screenshot())
+ax3.set_title('Bottom up', color='w')
 
-axes[3, 2].set_title('Left front', color='w')
-axes[4, 2].set_title('Bottom up', color='w')
-
-# add plot to bottom left 4 plots
-for ax in axes[3:, :2].flatten():
-    ax.remove()  # remove small axes
-ax = fig.add_subplot(gs[3:, :2], polar=True)  # add back a big axis
+fig.subplots_adjust(hspace=0.15, wspace=0, top=0.75, bottom=0,
+                    left=0.05, right=1)
+# move table right to make room for labels
 pos = ax.get_position()
-mne.viz.circle._plot_connectivity_circle(
-    np.zeros(con.shape) * np.nan, [''] + labels, node_angles=node_angles,
-    node_colors=node_colors, node_height=4, vmin=0, vmax=1, fontsize_names=8,
-    colormap=label_cmap, textcolor='white', colorbar=False, linewidth=1,
-    ax=ax, show=False)
+ax.set_position((pos.x0 + 0.18, pos.y0,
+                 pos.width, pos.height))
 
-fig.subplots_adjust(hspace=0.1, wspace=0, top=0.95, bottom=0, left=0, right=1)
-# adjust big axis, bring in
-ax.set_position((pos.x0 + 0.05, pos.y0 + 0.02,
-                 pos.width - 0.1, pos.height - 0.1))
-
-fig.text(0.02, 0.98, 'a', color='w', fontsize=12)
-fig.text(0.02, 0.38, 'b', color='w', fontsize=12)
+fig.text(0.02, 0.85, 'a', color='w', fontsize=12)
+fig.text(0.02, 0.22, 'b', color='w', fontsize=12)
 for ext in exts:
-    fig.savefig(op.join(fig_dir, f'feature_labels.{ext}'),
+    fig.savefig(op.join(fig_dir, f'feature_table.{ext}'),
                 facecolor=fig.get_facecolor(), dpi=300)
