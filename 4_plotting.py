@@ -416,6 +416,9 @@ ax.plot(np.linspace(4.5, 7.5, epochs_data.shape[1]),
         (epochs_data + np.linspace(13, 20, n_epochs)[:, None]).T,
         color='black', linewidth=0.25)
 ax.text(6, 21, 'Epochs for an\nExample Channel', ha='center', fontsize=8)
+ax.text(4.65, 22.3, '1', ha='center', fontsize=8)
+ax.scatter([4.65], [22.6], marker='o', s=120, clip_on=False,
+           edgecolors='black', facecolors='none')
 ax.plot([6, 6], [12.75, 20.5], color='r')
 ax.text(6, 12, '...', ha='center', fontsize=32, color='gray')
 ax.text(6, 10.5, 'Average', ha='center')
@@ -433,6 +436,9 @@ for offset in np.linspace(13, 20, n_epochs):
 
 # spectrogram
 ax.text(11, 20.8, 'Example Training\nSpectrograms', ha='center')
+ax.text(9, 22.3, '2', ha='center', fontsize=8)
+ax.scatter([9], [22.6], marker='o', s=120, clip_on=False,
+           edgecolors='black', facecolors='none')
 for i in range(10):
     x0, x1 = 9.75 - i / 10, 12.75 - i / 10
     y0, y1 = 14 - i / 10, 20 - i / 10
@@ -449,6 +455,9 @@ ax.fill([9.75, 9.75, 9.25, 10.25, 11.25, 10.75, 10.75, 9.75],
 # pca
 ax.text(10.25, 6.5, 'Component Weights\nfor each Training Epoch',
         ha='center', fontsize=10)
+ax.text(7.9, 7.8, '2', ha='center', fontsize=8)
+ax.scatter([7.9], [8.1], marker='o', s=120, clip_on=False,
+           edgecolors='black', facecolors='none')
 ax.plot(np.linspace(8.75, 11.75, X_train_pca.shape[1]),
         (0.1 * X_train_pca[:n_epochs] +
          np.linspace(2, 6, n_epochs)[:, None]).T)
