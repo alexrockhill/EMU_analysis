@@ -313,9 +313,9 @@ XY[:, 1] = YY.ravel()
 ZZ = classifier.decision_function(XY)
 ZZ = ZZ.reshape(XX.shape)
 
-fig, (ax, ax2) = plt.subplots(2, 1, figsize=(6, 8),
-                              gridspec_kw={'height_ratios': [1, 2]})
-fig.text(0.05, 0.9, 'a', fontsize=18)
+fig, (ax, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 8),
+                                   gridspec_kw={'height_ratios': [1, 2, 1]})
+fig.text(0.03, 0.97, 'a', fontsize=18)
 ax.axis('off')
 # fixation 700 + blank 700 + go 1200 + iti 4000 = 6600
 ax.axis([-0.02, 6.62, -1, 1])
@@ -377,7 +377,7 @@ ax.text(4, -0.85, 'Null Epoch\n-2500 to -1500 ms\nrelative to end of trial',
         va='center', ha='center', fontsize=8, color='green', alpha=0.5)
 
 ax = ax2
-fig.text(0.05, 0.6, 'b', fontsize=18)
+fig.text(0.03, 0.75, 'b', fontsize=18)
 ax.axis('off')
 ax.set_xlim([-0.1, 13.1])
 ax.set_ylim([-2.1, 22.1])
@@ -453,7 +453,7 @@ ax.fill([9.75, 9.75, 9.25, 10.25, 11.25, 10.75, 10.75, 9.75],
 # pca
 ax.text(10.25, 6.5, 'Component Weights\nfor each Training Epoch',
         ha='center', fontsize=10)
-ax.text(7.9, 7.8, '2', ha='center', fontsize=8)
+ax.text(7.9, 7.8, '3', ha='center', fontsize=8)
 ax.scatter([7.9], [8.1], marker='o', s=120, clip_on=False,
            edgecolors='black', facecolors='none')
 ax.plot(np.linspace(8.75, 11.75, X_train_pca.shape[1]),
@@ -472,6 +472,9 @@ ax.fill([8.625, 7.875, 7.875, 7.625, 7.875, 7.875, 8.625, 8.625],
 
 # svm
 ax.text(6, 6, 'SVM Coefficients', ha='center')
+ax.text(4, 6.1, '4', ha='center', fontsize=8)
+ax.scatter([4], [6.4], marker='o', s=120, clip_on=False,
+           edgecolors='black', facecolors='none')
 ax.plot(np.linspace(4.5, 7.5, classifier.coef_[0].size),
         5.25 + classifier.coef_[0] / abs(classifier.coef_[0]).max())
 ax.imshow(image[::-1], extent=(4.5, 7.5, -2, 4), aspect='auto', cmap='viridis')
@@ -495,6 +498,9 @@ ax.plot(np.linspace(0, 1.25, X_test_pca.shape[1]),
 ax.text(0.625, -1.5, '...', ha='center', fontsize=24, color=(0.5, 0.5, 0.5))
 
 # decision boundary
+ax.text(2, 6.1, '5', ha='center', fontsize=8)
+ax.scatter([2], [6.4], marker='o', s=120, clip_on=False,
+           edgecolors='black', facecolors='none')
 ax.contourf((XX - x_min) / x_max / 1.5, (YY - y_min) / y_max * 1.5 + 4.25, ZZ,
             cmap='RdBu', levels=20)
 ax.scatter((X_test_pca[y_test == 0, 0] - x_min) / x_max / 1.5,
@@ -522,6 +528,31 @@ ax.plot([0.5, 0.5], [3.5, 6], color='black')
 # red outline
 ax.plot([0, 4.4, 4.4], [7.5, 7.5, 22], color='tab:red')
 
+# add eigenspectrograms
+ax = ax3
+fig.text(0.03, 0.285, 'c', fontsize=18)
+ax.set_xlim([0, 3.5])
+ax.set_ylim([0, 1])
+for direction in ('right', 'top', 'bottom'):
+    ax.spines[direction].set_visible(False)
+ax.invert_yaxis()
+ax.imshow(eigenvectors[0], extent=(0, 1, 0, 1), aspect='auto', cmap='viridis')
+ax.imshow(eigenvectors[1], extent=(1.2, 2.2, 0, 1),
+          aspect='auto', cmap='viridis')
+ax.imshow(eigenvectors[2], extent=(2.4, 3.4, 0, 1),
+          aspect='auto', cmap='viridis')
+ax.set_xticks([0, 0.5, 1, 1.2, 1.7, 2.2, 2.4, 2.9, 3.4])
+ax.set_xticklabels([-0.5, 0, 0.5] * 3)
+ax.set_xlabel('Time (s)')
+ax.set_yticks(np.linspace(1, 0, len(freqs)))
+ax.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
+                    enumerate(np.array(freqs).round(
+                    ).astype(int))], fontsize=4)
+ax.set_ylabel('Frequency (Hz)')
+pos = ax.get_position()
+ax.set_position((pos.x0, pos.y0 - 0.05, pos.width, pos.height))
+
+fig.subplots_adjust(top=0.98, bottom=0.1, left=0.1, right=0.98)
 for ext in exts:
     fig.savefig(op.join(fig_dir, f'schematic.{ext}'), dpi=300)
 
