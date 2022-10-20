@@ -62,38 +62,36 @@ cmap = plt.get_cmap('viridis')
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 
 # get svm information
-scores, null_scores, clusters, images, null_images, pca_vars, null_pca_vars = \
-    dict(), dict(), dict(), dict(), dict(), dict(), dict()
+scores, clusters, images, pca_vars, svm_coef = \
+    ({event: dict() for event in ('event', 'go_event', 'null')},) * 5
 for sub in subjects:
+    print(f'Loading subject {sub} data')
     with np.load(op.join(data_dir, f'sub-{sub}_pca_svm_data.npz'),
                  allow_pickle=True) as data:
-        scores.update(data['scores'].item()['event'])
-        null_scores.update(data['scores'].item()['null'])
-        clusters.update(data['clusters'].item())
-        images.update(data['images'].item()['event'])
-        null_images.update(data['images'].item()['null'])
-        pca_vars.update(data['pca_vars'].item()['event'])
-        null_pca_vars.update(data['pca_vars'].item()['null'])
+        for event in ('event', 'go_event', 'null'):
+            scores[event].update(data['scores'].item()[event])
+            clusters[event].update(data['clusters'].item()[event])
+            images[event].update(data['images'].item()[event])
+            pca_vars[event].update(data['pca_vars'].item()[event])
+            svm_coef[event].update(data['svm_coef'].item()[event])
 
 # exclude epileptogenic contacts
 for name in exclude_ch:
-    if name not in scores:
-        print(f'{name} not found')
-        continue
-    scores.pop(name)
-    null_scores.pop(name)
-    clusters.pop(name)
-    images.pop(name)
-    null_images.pop(name)
-    pca_vars.pop(name)
-    null_pca_vars.pop(name)
+    for event in ('event', 'go_event', 'null'):
+        if name not in scores[event]:
+            print(f'{name} not found')
+            continue
+        scores[event].pop(name)
+        clusters[event].pop(name)
+        images[event].pop(name)
+        pca_vars[event].pop(name)
+        svm_coef[event].pop(name)
 
-print('Event variance explained {}+/-{}'.format(
-    np.mean(np.sum(np.array(list(pca_vars.values())), axis=1)),
-    np.std(np.sum(np.array(list(pca_vars.values())), axis=1))))
-print('Null variance explained {}+/-{}'.format(
-    np.mean(np.sum(np.array(list(null_pca_vars.values())), axis=1)),
-    np.std(np.sum(np.array(list(null_pca_vars.values())), axis=1))))
+for event in ('event', 'go_event', 'null'):
+    print('Event {} variance explained {}+/-{}'.format(
+        event,
+        np.mean(np.sum(np.array(list(pca_vars[event].values())), axis=1)),
+        np.std(np.sum(np.array(list(pca_vars[event].values())), axis=1))))
 
 
 spec_shape = images[list(images.keys())[0]].shape

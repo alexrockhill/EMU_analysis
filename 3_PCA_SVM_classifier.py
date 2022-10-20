@@ -144,12 +144,14 @@ if not op.isfile(n_comp_plot_fname):
 # %%
 # The main classification
 
-pca_vars = dict(event=dict(), null=dict())
-svm_coef = dict(event=dict(), null=dict())
-scores = dict(event=dict(), null=dict())  # scores per electrode
-images = dict(event=dict(), null=dict())  # correlation coefficient images
+pca_vars = dict(event=dict(), go_event=dict(), null=dict())
+svm_coef = dict(event=dict(), go_event=dict(), null=dict())
+# scores per electrode
+scores = dict(event=dict(), go_event=dict(), null=dict())
+# correlation coefficient images
+images = dict(event=dict(), go_event=dict(), null=dict())
 
-clusters = dict()
+clusters = dict(event=dict(), go_event=dict(), null=dict())
 threshold = stats.distributions.t.ppf(1 - alpha, len(subjects) - 1)
 
 rng = np.random.default_rng(seed=33)
@@ -174,21 +176,26 @@ for sub in get_subjects(__name__, sys.argv):
         name_str = f'sub-{sub}_ch-{elec_name}{number}'
         print(str(np.round(100 * i / len(raw.ch_names), 2)) + '% done', ch)
         tfr_data = compute_tfr(raw, i, raw_filtered, keep)
-        # cluster permutation statistics
-        T_obs, ch_clusters, cluster_p_values, _ = \
-            mne.stats.permutation_cluster_1samp_test(
-                tfr_data['event']['data'] - tfr_data['baseline']['data'],
-                n_permutations=1024, threshold=threshold, out_type='mask')
-        T_corrected = np.nan * np.ones_like(T_obs)
-        cluster_count = 0
-        for c, p_val in zip(ch_clusters, cluster_p_values):
-            if p_val <= alpha:
-                T_corrected[c] = T_obs[c]
-                cluster_count += 1
-        print(cluster_count, np.nanmin(T_corrected), np.nanmax(T_corrected))
-        clusters[name_str] = T_corrected
-        # compare baseline to event as well as null to baseline
-        for (bl_event, event) in [('baseline', 'event'), ('baseline', 'null')]:
+        # compare events
+        for (bl_event, event) in [('baseline', 'event'),
+                                  ('baseline', 'go_event'),
+                                  ('baseline', 'null')]:
+            print(f'{bl_event}-{event} comparion')
+            # cluster permutation statistics
+            T_obs, ch_clusters, cluster_p_values, _ = \
+                mne.stats.permutation_cluster_1samp_test(
+                    tfr_data[event]['data'] - tfr_data[bl_event]['data'],
+                    n_permutations=1024, threshold=threshold, out_type='mask')
+            T_corrected = np.nan * np.ones_like(T_obs)
+            cluster_count = 0
+            for c, p_val in zip(ch_clusters, cluster_p_values):
+                if p_val <= alpha:
+                    T_corrected[c] = T_obs[c]
+                    cluster_count += 1
+            print(cluster_count, np.nanmin(T_corrected),
+                  np.nanmax(T_corrected))
+            clusters[event][name_str] = T_corrected
+            # PCA SVM
             X = np.concatenate([tfr_data[bl_event]['data'],
                                 tfr_data[event]['data']], axis=0)
             X = X.reshape(X.shape[0], -1).astype('float32')  # flatten features
