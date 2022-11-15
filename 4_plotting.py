@@ -63,7 +63,8 @@ template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 
 # get svm information
 scores, clusters, images, pca_vars, svm_coef = \
-    ({event: dict() for event in ('event', 'go_event', 'null')},) * 5
+    ({event: dict() for event in ('event', 'go_event', 'null')}
+     for _ in range(5))
 for sub in subjects:
     print(f'Loading subject {sub} data')
     with np.load(op.join(data_dir, f'sub-{sub}_pca_svm_data.npz'),
