@@ -95,47 +95,52 @@ for event in ('event', 'go_event', 'null'):
         np.std(np.sum(np.array(list(pca_vars[event].values())), axis=1))))
 
 
-spec_shape = images[list(images.keys())[0]].shape
-times = np.linspace(-0.5, 0.5, spec_shape[1])
+spec_shape = images['event'][list(images['event'].keys())[0]].shape
+times = {'event': np.linspace(-0.5, 0.5, spec_shape[1]),
+         'go_event': np.linspace(0, 1, spec_shape[1])}
 
 
 # compute significant indices pooled across subjects
-sig_thresh = np.quantile(list(null_scores.values()), 1 - alpha)
-not_sig = [name for name, score in scores.items()
-           if score <= sig_thresh]
-sig = [name for name, score in scores.items()
-       if score > sig_thresh]
+sig_thresh = np.quantile(list(scores['null'].values()), 1 - alpha)
+not_sig = {event: [name for name, score in scores['event'].items()
+                   if score <= sig_thresh]
+           for event in ('event', 'go_event')}
+sig = {event: [name for name, score in scores['event'].items()
+               if score > sig_thresh]
+       for event in ('event', 'go_event')}
 
 # compute null distribution thresholds per image
 image_thresh = np.quantile(
-    abs(np.array(list(null_images.values()))), 1 - alpha)
+    abs(np.array(list(images['null'].values()))), 1 - alpha)
 
 # feature map computation
-feature_maps = np.zeros((3, 2) + spec_shape)
-for name, image in images.items():
-    ch_cluster = clusters[name]
-    score = scores[name]
-    if score > sig_thresh:
-        feature_maps[0, 0] += abs(image) > image_thresh  # count
-        feature_maps[1, 0] += image > image_thresh
-        feature_maps[2, 0] += score * (abs(image) > image_thresh)
-        feature_maps[0, 1] += ~np.isnan(ch_cluster)
-        feature_maps[1, 1] += ~np.isnan(ch_cluster) * ch_cluster > 0
-        feature_maps[2, 1] += score * ~np.isnan(ch_cluster)
+feature_maps = {'event': np.zeros((3, 2) + spec_shape),
+                'go_event': np.zeros((3, 2) + spec_shape)}
+for event in feature_maps:
+    for name, image in images[event].items():
+        ch_cluster = clusters[event][name]
+        score = scores[event][name]
+        if score > sig_thresh:
+            feature_maps[event][0, 0] += abs(image) > image_thresh  # count
+            feature_maps[event][1, 0] += image > image_thresh
+            feature_maps[event][2, 0] += score * (abs(image) > image_thresh)
+            feature_maps[event][0, 1] += ~np.isnan(ch_cluster)
+            feature_maps[event][1, 1] += ~np.isnan(ch_cluster) * ch_cluster > 0
+            feature_maps[event][2, 1] += score * ~np.isnan(ch_cluster)
 
-# normalize
-feature_maps[1, 0] /= feature_maps[0, 0]  # scale by count
-feature_maps[2, 0] /= feature_maps[0, 0]  # scale by count
-feature_maps[0, 0] /= feature_maps[0, 0].max()
-feature_maps[1, 1] /= feature_maps[0, 1]  # scale by count
-feature_maps[2, 1] /= feature_maps[0, 1]  # scale by count
-feature_maps[0, 1] /= feature_maps[0, 1].max()
+    # normalize
+    feature_maps[event][1, 0] /= feature_maps[event][0, 0]  # scale by count
+    feature_maps[event][2, 0] /= feature_maps[event][0, 0]  # scale by count
+    feature_maps[event][0, 0] /= feature_maps[event][0, 0].max()
+    feature_maps[event][1, 1] /= feature_maps[event][0, 1]  # scale by count
+    feature_maps[event][2, 1] /= feature_maps[event][0, 1]  # scale by count
+    feature_maps[event][0, 1] /= feature_maps[event][0, 1].max()
 
 # time-frequency areas of interest
 prop_thresh = 1 / 3
 areas = {'Pre-Movement Beta': (1, 22, 37, -0.35, -0.05),
          'Delta': (0, 1, 4, -0.5, 0.25),
-         'Event-Related Potential': (1, 0, 0, -0.5, 0.5),
+         'Event-Related Potential': (0, 0, 0, -0.5, 0.5),
          'Post-Movement High-Beta': (1, 27, 36, 0.05, 0.2),
          'Post-Movement Low-Beta': (1, 14, 23, 0.1, 0.25),
          'Post-Movement Gamma': (0, 43, 140, 0.1, 0.23),
@@ -149,17 +154,20 @@ area_directions = {'Pre-Movement Beta': (-1,), 'Delta': (1,),
                    'Pre-Movement Alpha': (-1, 1)}
 
 
-area_contacts = {area: dict() for area in areas}
-for name, cluster in clusters.items():
-    mask = ~np.isnan(cluster) * np.sign(cluster)
-    for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
-        fmin_idx = np.argmin(abs(freqs - fmin))
-        fmax_idx = np.argmin(abs(freqs - fmax))
-        tmin_idx = np.argmin(abs(times - tmin))
-        tmax_idx = np.argmin(abs(times - tmax))
-        this_area = mask[slice(fmin_idx, fmax_idx + 1),
-                         slice(tmin_idx, tmax_idx + 1)]
-        area_contacts[area][name] = np.nansum(this_area) / this_area.size
+area_contacts = {'event': {area: dict() for area in areas},
+                 'go_event': {area: dict() for area in areas}}
+for event in area_contacts:
+    for name, cluster in clusters[event].items():
+        mask = ~np.isnan(cluster) * np.sign(cluster)
+        for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
+            fmin_idx = np.argmin(abs(freqs - fmin))
+            fmax_idx = np.argmin(abs(freqs - fmax))
+            tmin_idx = np.argmin(abs(times - tmin))
+            tmax_idx = np.argmin(abs(times - tmax))
+            this_area = mask[slice(fmin_idx, fmax_idx + 1),
+                             slice(tmin_idx, tmax_idx + 1)]
+            area_contacts[event][area][name] = \
+                np.nansum(this_area) / this_area.size
 
 
 # channel positions in template and individual
@@ -193,7 +201,14 @@ for sub in subjects:  # first, find associated labels
         ch_pos['template'][f'sub-{sub}_ch-{ch_name}'] = this_pos
 
 
-# channel labels in individual space
+# get data for removing multiple
+aseg_data = list()
+aseg_trans = list()
+for aseg in asegs:
+    aseg_obj = nib.load(op.join(subjects_dir, template, 'mri', aseg + '.mgz'))
+    aseg_data.append(np.array(aseg_obj.dataobj))
+    aseg_trans.append(np.linalg.inv(aseg_obj.header.get_vox2ras_tkr()))
+
 ch_labels = {aseg: dict() for aseg in asegs}
 for sub in subjects:  # first, find associated labels
     info = mne.io.read_info(op.join(
@@ -203,13 +218,41 @@ for sub in subjects:  # first, find associated labels
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
         coord_frame='head')
     montage.apply_trans(trans)
-    for aseg in asegs:
+    for aseg, aseg_lut, this_aseg_trans in zip(asegs, aseg_data, aseg_trans):
         sub_labels = mne.get_montage_volume_labels(
             montage, f'sub-{sub}', subjects_dir=subjects_dir,
             aseg=aseg, dist=2)[0]
         for ch_name, labels in sub_labels.items():
-            ch_name = ch_name.replace(' ', '')
-            ch_labels[aseg][f'sub-{sub}_ch-{ch_name}'] = labels
+            ch_name_fix = ch_name.replace(' ', '')
+            for label in labels.copy():
+                if 'unknown' in label.lower():
+                    labels.remove(label)
+            # fix multiple
+            if len(labels) > 1:
+                this_pos = montage.get_positions()['ch_pos'][ch_name]
+                min_dists = list()
+                for label in labels:
+                    min_dists.append(np.min(np.linalg.norm(
+                        np.array(np.where(aseg_lut == lut[label])).T -
+                        mne.transforms.apply_trans(
+                            this_aseg_trans, this_pos * 1000), axis=1)))
+                for label, this_dist in zip(labels.copy(), min_dists):
+                    if this_dist != np.min(min_dists):
+                        labels.remove(label)
+            ch_labels[aseg][f'sub-{sub}_ch-{ch_name_fix}'] = labels
+
+
+# check to ensure no multiples
+multiple = dict()
+for name, labels in ch_labels[asegs[1]].items():
+    if len(labels) > 1:
+        multiple[name] = labels
+
+# check number unlabelled
+unlabelled = list()
+for name, labels in ch_labels[asegs[1]].items():
+    if len(labels) == 0:
+        unlabelled.append(name)
 
 
 def format_label_dk(label, combine_hemi=False, cortex=True):
@@ -234,8 +277,16 @@ def format_label_dk(label, combine_hemi=False, cortex=True):
 
 
 def format_label_destrieux(label, combine_hemi=False, cortex=True):
-    return DESTRIEUX_DICT[f'ctx_{label}'] if f'ctx_{label}' in DESTRIEUX_DICT \
-        else DESTRIEUX_DICT[label]
+    label_short = label.replace('ctx_', '').replace(
+        'rh_', '').replace('lh_', '')
+    if label_short in DESTRIEUX_DICT:
+        prefix = ''
+        if 'rh' in label:
+            prefix = 'Right '
+        elif 'lh' in label:
+            prefix = 'Left '
+        return prefix + DESTRIEUX_DICT[label_short].title()
+    return label.replace('-', ' ')
 
 
 #########
@@ -636,161 +687,199 @@ for ext in exts:
 
 binsize = 0.01
 bins = np.linspace(binsize, 1, int(1 / binsize)) - binsize / 2
-fig, ax = plt.subplots()
 
-patches = ax.hist(list(scores.values()), bins=bins,
-                  alpha=0.5, color='b')[2]
-for i, left_bin in enumerate(bins[:-1]):
-    if left_bin > sig_thresh:
-        patches[i].set_facecolor('r')
-ax.hist(list(null_scores.values()), bins=bins, alpha=0.5, color='gray',
-        label='null')
-y_bounds = ax.get_ylim()
-ax.axvline(np.mean(list(scores.values())), *y_bounds, color='black')
-ax.axvline(np.mean(list(null_scores.values())), *y_bounds, color='gray')
-ax.set_xlim([0.25, 1])
-ax.set_xlabel('Test Accuracy')
-ax.set_ylabel('Count')
-not_sig_patch = mpatches.Patch(color='b', alpha=0.5, label='not significant')
-sig_patch = mpatches.Patch(color='r', alpha=0.5, label='significant')
-ax.legend(handles=[not_sig_patch, sig_patch])
-fig.suptitle('PCA Linear SVM Classification Accuracies')
-for ext in exts:
-    fig.savefig(op.join(fig_dir, f'score_hist.{ext}'), dpi=300)
+for event in ('event', 'go_event'):
+    fig, ax = plt.subplots()
 
-print('Paired t-test p-value: {}'.format(
-    stats.ttest_rel(list(scores.values()),
-                    list(null_scores.values()))[1]))
-print('Significant contacts {} / {}'.format(
-    (np.array(list(scores.values())) > sig_thresh).sum(), len(scores)))
+    patches = ax.hist(list(scores[event].values()), bins=bins,
+                      alpha=0.5, color='b')[2]
+    for i, left_bin in enumerate(bins[:-1]):
+        if left_bin > sig_thresh:
+            patches[i].set_facecolor('r')
+    ax.hist(list(scores['null'].values()), bins=bins, alpha=0.5, color='gray',
+            label='null')
+    y_bounds = ax.get_ylim()
+    ax.axvline(np.mean(list(scores['event'].values())),
+               *y_bounds, color='black')
+    ax.axvline(np.mean(list(scores['null'].values())), *y_bounds, color='gray')
+    ax.set_xlim([0.25, 1])
+    ax.set_xlabel('Test Accuracy')
+    ax.set_ylabel('Count')
+    not_sig_patch = mpatches.Patch(
+        color='b', alpha=0.5, label='not significant')
+    sig_patch = mpatches.Patch(color='r', alpha=0.5, label='significant')
+    ax.legend(handles=[not_sig_patch, sig_patch])
+    fig.suptitle('PCA Linear SVM Classification Accuracies')
+    for ext in exts:
+        fig.savefig(op.join(fig_dir, f'{event}_score_hist.{ext}'), dpi=300)
+
+    print('{} Paired t-test p-value: {}'.format(
+        event.replace('_', ' ').capitalize(),
+        stats.ttest_rel(list(scores[event].values()),
+                        list(scores['null'].values()))[1]))
+    print('{} Significant contacts {} / {}'.format(
+        event.replace('_', ' ').capitalize(),
+        (np.array(list(scores[event].values())) > sig_thresh).sum(),
+        len(scores[event])))
 
 # %%
 # Figure 4: Plots of electrodes with high classification accuracies
 
-fig = plt.figure(figsize=(8, 6))
-gs = fig.add_gridspec(3, 4)
-axes = np.array([[fig.add_subplot(gs[i, j]) for j in range(3)]
-                 for i in range(3)])
-cax = fig.add_subplot(gs[:2, 3])
-cax2 = fig.add_subplot(gs[2, 3])
-for ax in axes.flatten():
-    ax.axis('off')
-    ax.invert_yaxis()
+for event in ('event', 'go_event'):
+    fig = plt.figure(figsize=(8, 6))
+    gs = fig.add_gridspec(4, 4)
+    axes = np.array([[fig.add_subplot(gs[i, j]) for j in range(3)]
+                     for i in range(3)])
+    cax = fig.add_subplot(gs[:2, 3])
+    cax2 = fig.add_subplot(gs[2:, 3])
+    for ax in axes.flatten():
+        ax.axis('off')
+        ax.invert_yaxis()
+    tax = fig.add_subplot(gs[3, :3])  # table axis
 
+    # color contacts by accuracy
+    brain = mne.viz.Brain(template, **brain_kwargs)
+    norm = Normalize(vmin=0.5, vmax=1)
+    for name, score in scores[event].items():
+        if score > sig_thresh:
+            x, y, z = ch_pos['template'][name]
+            brain._renderer.sphere(center=(x, y, z),
+                                   color=cmap(norm(score))[:3],
+                                   scale=0.005)
 
-# color contacts by accuracy
-brain = mne.viz.Brain(template, **brain_kwargs)
-norm = Normalize(vmin=0, vmax=1)
-for name, score in scores.items():
-    if score > sig_thresh:
-        x, y, z = ch_pos['template'][name]
-        brain._renderer.sphere(center=(x, y, z),
-                               color=cmap(norm(score))[:3],
-                               scale=0.005)
+    axes[0, 0].set_title('Right front')
+    axes[0, 1].set_title('Top down')
+    axes[0, 2].set_title('Left front')
+    brain.show_view(azimuth=60, elevation=100, distance=.3)
+    axes[0, 0].imshow(brain.screenshot())
+    brain.show_view(azimuth=90, elevation=0)
+    axes[0, 1].imshow(brain.screenshot())
+    brain.show_view(azimuth=120, elevation=100)
+    axes[0, 2].imshow(brain.screenshot())
+    brain.close()
+    fig.text(0.1, 0.85, 'a')
 
+    # get labels
+    ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
+                       'white-matter', 'wm-', 'cc_', 'cerebellum',
+                       'brain-stem')
 
-axes[0, 0].set_title('Right front')
-axes[0, 1].set_title('Top down')
-axes[0, 2].set_title('Left front')
-brain.show_view(azimuth=60, elevation=100, distance=.3)
-axes[0, 0].imshow(brain.screenshot())
-brain.show_view(azimuth=90, elevation=0)
-axes[0, 1].imshow(brain.screenshot())
-brain.show_view(azimuth=120, elevation=100)
-axes[0, 2].imshow(brain.screenshot())
-brain.close()
-fig.text(0.1, 0.85, 'a')
+    labels = dict()
+    for name, score in scores[event].items():
+        these_labels = ch_labels[asegs[1]][name]  # use plotting atlas
+        for label in these_labels:
+            if any([kw in label.lower() for kw in ignore_keywords]):
+                continue
+            if label in labels:
+                labels[label].append(score)
+            else:
+                labels[label] = [score]
 
-# get labels
-ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
-                   'white-matter', 'wm-', 'cc_', 'cerebellum',
-                   'brain-stem')
+    label_names = sorted(list(labels.keys()))
+    acc_colors = [cmap(norm(np.mean(labels[name]))) for name in label_names]
 
-labels = dict()
-for name, score in scores.items():
-    these_labels = ch_labels[asegs[0]][name]  # use plotting atlas
-    for label in these_labels:
-        if any([kw in label.lower() for kw in ignore_keywords]):
-            continue
-        if label in labels:
-            labels[label].append(score)
-        else:
-            labels[label] = [score]
+    brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
+    brain.add_volume_labels(aseg=asegs[1], labels=label_names,
+                            colors=acc_colors, alpha=1, smooth=0.9)
+    # this freesurfer command must be run first for ? = r and l
+    # mri_annotation2label --subject cvs_avg35_inMNI152 --hemi ?h \
+    # --annotation aparc.a2009s --outdir $SUBJECTS_DIR/cvs_avg35_inMNI152/label
+    for hemi in ('lh', 'rh'):
+        brain.add_label('S_central', hemi=hemi, color='red',
+                        borders=200)
+    brain.show_view(azimuth=60, elevation=100, distance=.3)
+    axes[1, 0].imshow(brain.screenshot())
+    brain.show_view(azimuth=90, elevation=0)
+    axes[1, 1].imshow(brain.screenshot())
+    brain.show_view(azimuth=120, elevation=100)
+    axes[1, 2].imshow(brain.screenshot())
+    brain.close()
+    fig.text(0.1, 0.65, 'b')
 
+    # colorbar
+    gradient = np.linspace(0, 1, 256)
+    gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
+    cax.imshow(gradient, aspect='auto', cmap=cmap)
+    cax.set_xticks([])
+    cax.invert_yaxis()
+    cax.yaxis.tick_right()
+    cax.set_yticks(np.array([0, 0.5, 1]) * 256)
+    cax.set_yticklabels([np.round(sig_thresh, 2),
+                         np.round((sig_thresh + 1) / 2, 2), 1])
+    cax.yaxis.set_label_position('right')
+    cax.set_ylabel('Accuracy')
 
-label_names = list(labels.keys())
-acc_colors = [cmap(norm(np.mean(labels[name]))) for name in label_names]
+    # plot counts of electrodes per area
+    counts = dict()
+    for these_labels in ch_labels[asegs[1]].values():
+        for label in these_labels:
+            if any([kw in label.lower() for kw in ignore_keywords]):
+                continue
+            if label in counts:
+                counts[label] += 1
+            else:
+                counts[label] = 1
 
-brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
-brain.add_volume_labels(aseg=asegs[0], labels=label_names,
-                        colors=acc_colors, alpha=1, smooth=0.9)
-brain.show_view(azimuth=60, elevation=100, distance=.3)
-axes[1, 0].imshow(brain.screenshot())
-brain.show_view(azimuth=90, elevation=0)
-axes[1, 1].imshow(brain.screenshot())
-brain.show_view(azimuth=120, elevation=100)
-axes[1, 2].imshow(brain.screenshot())
-brain.close()
-fig.text(0.1, 0.6, 'b')
+    density_colors = [cmap(min([counts[name] / 10, 1.]))
+                      for name in label_names]
 
-# colorbar
-gradient = np.linspace(0, 1, 256)
-gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
-cax.imshow(gradient, aspect='auto', cmap=cmap)
-cax.set_xticks([])
-cax.invert_yaxis()
-cax.yaxis.tick_right()
-cax.set_ylim(np.array([sig_thresh, 1]) * 256)
-cax.set_yticks(np.array([sig_thresh, 0.75, 1]) * 256)
-cax.set_yticklabels([np.round(sig_thresh, 2), 0.75, 1])
-cax.yaxis.set_label_position('right')
-cax.set_ylabel('Accuracy')
+    brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
+    brain.add_volume_labels(aseg=asegs[1], labels=label_names,
+                            colors=density_colors, alpha=1, smooth=0.9)
+    for hemi in ('lh', 'rh'):
+        brain.add_label('S_central', hemi=hemi, color='red',
+                        borders=200)
+    brain.show_view(azimuth=60, elevation=100, distance=.3)
+    axes[2, 0].imshow(brain.screenshot())
+    brain.show_view(azimuth=90, elevation=0)
+    axes[2, 1].imshow(brain.screenshot())
+    brain.show_view(azimuth=120, elevation=100)
+    axes[2, 2].imshow(brain.screenshot())
+    brain.close()
+    fig.text(0.1, 0.45, 'c')
 
-# plot counts of electrodes per area
-counts = dict()
-for these_labels in ch_labels[asegs[0]].values():
-    for label in these_labels:
-        if any([kw in label.lower() for kw in ignore_keywords]):
-            continue
-        if label in counts:
-            counts[label] += 1
-        else:
-            counts[label] = 1
+    # count colorbar
+    gradient = np.linspace(0, 10, 256)
+    gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
+    cax2.imshow(gradient, aspect='auto', cmap=cmap)
+    cax2.set_xticks([])
+    cax2.invert_yaxis()
+    cax2.yaxis.tick_right()
+    cax2.set_yticks(np.linspace(2, 10, 5) * 256 / 10)
+    cax2.set_yticklabels(['2', '4', '6', '8', '10+'])
+    cax2.yaxis.set_label_position('right')
+    cax2.set_ylabel('Contact Count')
 
+    fig.subplots_adjust(hspace=0)
+    pos = cax.get_position()
+    cax.set_position((pos.x0, pos.y0 + pos.height * 0.1,
+                      0.05, pos.height * 0.8))
+    pos = cax2.get_position()
+    cax2.set_position((pos.x0, pos.y0 + pos.height * 0.1,
+                       0.05, pos.height * 0.8))
 
-density_colors = [cmap(min([counts[name] / 10, 1.])) for name in label_names]
-
-brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
-brain.add_volume_labels(aseg=asegs[0], labels=label_names,
-                        colors=density_colors, alpha=1, smooth=0.9)
-brain.show_view(azimuth=60, elevation=100, distance=.3)
-axes[2, 0].imshow(brain.screenshot())
-brain.show_view(azimuth=90, elevation=0)
-axes[2, 1].imshow(brain.screenshot())
-brain.show_view(azimuth=120, elevation=100)
-axes[2, 2].imshow(brain.screenshot())
-brain.close()
-fig.text(0.1, 0.33, 'c')
-
-# count colorbar
-gradient = np.linspace(0, 10, 256)
-gradient = np.repeat(gradient[:, np.newaxis], 256, axis=1)
-cax2.imshow(gradient, aspect='auto', cmap=cmap)
-cax2.set_xticks([])
-cax2.invert_yaxis()
-cax2.yaxis.tick_right()
-cax2.set_yticks(np.linspace(2, 10, 5) * 256 / 10)
-cax2.set_yticklabels(['2', '4', '6', '8', '10+'])
-cax2.yaxis.set_label_position('right')
-cax2.set_ylabel('Contact Count')
-
-fig.subplots_adjust(hspace=0)
-pos = cax.get_position()
-cax.set_position((pos.x0, 0.35, 0.05, 0.5))
-pos = cax2.get_position()
-cax2.set_position((pos.x0, 0.1, 0.05, 0.2))
-for ext in exts:
-    fig.savefig(op.join(fig_dir, f'high_accuracy.{ext}'), dpi=300)
+    # table for electrode counts
+    tax.axis('off')
+    tax.set_xlim((-0.25, len(label_names) + 0.25))
+    tax.set_ylim((0, 1))
+    fig.canvas.draw()  # for bounding box
+    for i, label in enumerate(label_names):
+        text = tax.text(i, -0.05, format_label_dk(label),
+                        fontsize=4, rotation=90, va='bottom')
+        bbox = text.get_window_extent().transformed(tax.transData.inverted())
+        if i < len(label_names) - 1:
+            tax.plot([i + 0.7, i + 0.7], [-0.15, bbox.y1], color='black',
+                     clip_on=False)
+    tax.plot([-0.25, len(label_names) - 0.5], [-0.08, -0.08],
+             color='black', clip_on=False)
+    for i, count in enumerate([counts[label] for label in label_names]):
+        tax.text(i + 0.25, -0.1, str(count),
+                 ha='center', va='top', fontsize=4, rotation=90,
+                 path_effects=[patheffects.withStroke(
+                     linewidth=0.5, foreground=density_colors[i])])
+    fig.text(0.1, 0.3, 'd')
+    for ext in exts:
+        fig.savefig(op.join(fig_dir, f'{event}_high_accuracy.{ext}'), dpi=300)
 
 # %%
 # Figure 5: Accuracy by label region of interest
@@ -798,17 +887,15 @@ for ext in exts:
 ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel', 'cc_',
                    'wm', 'cerebellum')  # signal won't cross dura
 labels = set([label for labels in ch_labels[asegs[1]].values()
-              for label in labels
-              if not any([kw in label.lower() for kw in ignore_keywords])])
+              for label in labels])
 label_scores = dict()
-for name, score in scores.items():
+for name, score in scores['event'].items():
     these_labels = ch_labels[asegs[1]][name]  # use table atlas
     for label in these_labels:
-        if not any([kw in label.lower() for kw in ignore_keywords]):
-            if label in label_scores:
-                label_scores[label].append(score)
-            else:
-                label_scores[label] = [score]
+        if label in label_scores:
+            label_scores[label].append(score)
+        else:
+            label_scores[label] = [score]
 labels = sorted(labels, key=lambda label: np.mean(label_scores[label]))
 
 fig, ax = plt.subplots(figsize=(8, 12), facecolor='black')
@@ -816,9 +903,10 @@ fig.suptitle('Classification Accuracies by Label', color='w')
 
 for idx, label in enumerate(labels):
     for lh in (True, False):
-        for sig_label, names in {'sig': sig, 'not_sig': not_sig}.items():
+        for sig_label, names in {'sig': sig['event'],
+                                 'not_sig': not_sig['event']}.items():
             these_scores = \
-                [scores[name] for name in names
+                [scores['event'][name] for name in names
                  if label in ch_labels[asegs[1]][name] and
                  (lh == (int(name.split('_')[0].replace(
                      'sub-', '')) in lh_sub))]
@@ -885,10 +973,13 @@ fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.08,
 axes = axes.reshape(len(subjects), 2)
 binsize = 0.005
 bins = np.linspace(0, 1 - binsize, int(1 / binsize))
+tf_means = list()
+scores_means = list()
 for i, sub in enumerate(subjects):
     ax, ax2 = axes[i]
-    these_scores = [scores[name] for name in scores if
+    these_scores = [scores['event'][name] for name in scores['event'] if
                     int(name.split('_')[0].replace('sub-', '')) == sub]
+    scores_means.append(np.mean(these_scores))
     these_sig = [score for score in these_scores if score > sig_thresh]
     these_not_sig = [score for score in these_scores if score <= sig_thresh]
     ax.violinplot(these_sig + these_not_sig, [0],
@@ -907,6 +998,7 @@ for i, sub in enumerate(subjects):
     av_tfr = mne.time_frequency.AverageTFR(
         mne.create_info(['freq'], info['sfreq']), tf_scores[np.newaxis, :],
         windows, csp_freqs, 1)
+    tf_means.append(tf_scores.mean())
     av_tfr.plot([0], vmin=0.5, vmax=1, cmap=plt.cm.Reds, show=False, axes=ax2,
                 colorbar=i % 2 == 1)
     if i % 2 == 0:  # adjust for not having colorbar
@@ -929,6 +1021,10 @@ for i, sub in enumerate(subjects):
 
 for ext in exts:
     fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300)
+
+# linear regression
+res = stats.linregress(tf_means, scores_means)
+print(res)
 
 # %%
 # Figure 7: Contacts of interest
@@ -968,8 +1064,8 @@ for (ax, ax2), name, view in zip(axes, contacts_int, views):
                   ch_labels[asegs[1]][name2] if
                   not any([kw in label.lower() for kw in ignore_keywords])])
     # spectrogram plot
-    image = images[name]
-    cluster = clusters[name]
+    image = images['event'][name]
+    cluster = clusters['event'][name]
     mask = ~np.isnan(cluster)
     X, Y = np.meshgrid(range(image.shape[1]), range(image.shape[0]))
     img = ax.imshow(image, aspect='auto', vmin=-0.05, vmax=0.05,
@@ -1007,48 +1103,52 @@ for ext in exts:
 # %%
 # Figure 8: Feature maps
 
-fig, axes = plt.subplots(3, 2, figsize=(8, 8))
-for idx, ((svm_map, cluster_map), (ax1, ax2)) in enumerate(
-        zip(feature_maps, axes)):
-    vmin = 0 if idx < 2 else 0.75  # sig_thresh
-    c = ax1.imshow(svm_map, vmin=vmin, vmax=1, cmap='viridis', aspect='auto')
-    fig.colorbar(c, ax=ax1)
-    c = ax2.imshow(cluster_map, vmin=vmin, vmax=1,
-                   cmap='viridis', aspect='auto')
-    fig.colorbar(c, ax=ax2)
-    for ax in (ax1, ax2):
-        ax.set_xticks(np.linspace(0, spec_shape[1], 5))
-        ax.set_xticklabels([-0.5, -0.25, 0, 0.25, 0.5])
-        ax.invert_yaxis()
-    ax1.set_ylabel('Frequency (Hz)')
-    ax1.set_yticks(range(len(freqs)))
-    ax1.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
-                         enumerate(np.array(freqs).round(
-                         ).astype(int))], fontsize=5)
-    ax2.set_yticks([])
-    if idx == 0:
-        ax1.set_title('Proportion of\nSignificant Coefficients')
-        ax2.set_title('Proportion of\nSignificant Clusters')
-    elif idx == 1:
-        ax1.set_title('Proportion of Positive\nSignificant Coefficients')
-        ax2.set_title('Proportion of Positive\nSignificant Clusters')
-    else:
-        ax1.set_title('Average Accuracy of\nSignificant Coefficients')
-        ax2.set_title('Average Accuracy of\nSignificant Clusters')
+for event in ('event', 'go_event'):
+    fig, axes = plt.subplots(3, 2, figsize=(8, 8))
+    for idx, ((svm_map, cluster_map), (ax1, ax2)) in enumerate(
+            zip(feature_maps[event], axes)):
+        vmin = 0 if idx < 2 else 0.75  # sig_thresh
+        c = ax1.imshow(svm_map, vmin=vmin, vmax=1,
+                       cmap='viridis', aspect='auto')
+        fig.colorbar(c, ax=ax1)
+        c = ax2.imshow(cluster_map, vmin=vmin, vmax=1,
+                       cmap='viridis', aspect='auto')
+        fig.colorbar(c, ax=ax2)
+        for ax in (ax1, ax2):
+            ax.set_xticks(np.linspace(0, spec_shape[1], 5))
+            ax.set_xticklabels(np.concatenate(
+                [times[event][::spec_shape[1] // 4],
+                 [times[event][-1]]]).round(2))
+            ax.invert_yaxis()
+        ax1.set_ylabel('Frequency (Hz)')
+        ax1.set_yticks(range(len(freqs)))
+        ax1.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
+                             enumerate(np.array(freqs).round(
+                             ).astype(int))], fontsize=5)
+        ax2.set_yticks([])
+        if idx == 0:
+            ax1.set_title('Proportion of\nSignificant Coefficients')
+            ax2.set_title('Proportion of\nSignificant Clusters')
+        elif idx == 1:
+            ax1.set_title('Proportion of Positive\nSignificant Coefficients')
+            ax2.set_title('Proportion of Positive\nSignificant Clusters')
+        else:
+            ax1.set_title('Average Accuracy of\nSignificant Coefficients')
+            ax2.set_title('Average Accuracy of\nSignificant Clusters')
 
-for ax in axes[-1]:
-    ax.set_xlabel('Time (s)')
+    for ax in axes[-1]:
+        ax.set_xlabel('Time (s)')
 
-fig.text(0.04, 0.95, 'a', fontsize=24)
-fig.text(0.52, 0.95, 'b', fontsize=24)
-fig.text(0.04, 0.63, 'c', fontsize=24)
-fig.text(0.52, 0.63, 'd', fontsize=24)
-fig.text(0.04, 0.31, 'e', fontsize=24)
-fig.text(0.52, 0.31, 'f', fontsize=24)
+    fig.text(0.04, 0.95, 'a', fontsize=24)
+    fig.text(0.52, 0.95, 'b', fontsize=24)
+    fig.text(0.04, 0.63, 'c', fontsize=24)
+    fig.text(0.52, 0.63, 'd', fontsize=24)
+    fig.text(0.04, 0.31, 'e', fontsize=24)
+    fig.text(0.52, 0.31, 'f', fontsize=24)
 
-fig.tight_layout()
-for ext in exts:
-    fig.savefig(op.join(fig_dir, f'feature_map.{ext}'), dpi=300)
+    fig.tight_layout()
+    for ext in exts:
+        fig.savefig(op.join(fig_dir, f'{event}_feature_map.{ext}'), dpi=300)
 
 # %%
 # Figure 9: Anatomical Locations of Significant Correlations Areas
@@ -1072,25 +1172,34 @@ for ax in axes[:, 2:].flatten():
 bins = np.linspace(-1, 1, 21)
 idx = 0
 for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
-    # SVM spectrogram coefficients
     ax = axes[idx][0]
-    ax.imshow(feature_maps[fm_idx, 1], vmin={0: 0, 1: 0, 2: 0.75}[fm_idx],
-              vmax=1, cmap='viridis', aspect='auto')
     fmin_idx = np.argmin(abs(freqs - fmin))
     fmax_idx = max([np.argmin(abs(freqs - fmax)), fmin_idx + 1])
-    tmin_idx = np.argmin(abs(times - tmin))
-    tmax_idx = np.argmin(abs(times - tmax))
-    ax.plot([tmin_idx, tmin_idx, tmax_idx, tmax_idx, tmin_idx],
-            [fmin_idx, fmax_idx, fmax_idx, fmin_idx, fmin_idx],
-            color='red', linewidth=0.5)
-    ax.set_yticks([fmin_idx, fmax_idx])
-    ax.set_yticklabels([int(round(freqs[fmin_idx])),
-                        f'{int(round(freqs[fmax_idx]))}    '])
+    tmin_idx = np.argmin(abs(times['event'] - tmin))
+    tmax_idx = np.argmin(abs(times['event'] - tmax))
+    if area == 'Event-Related Potential':  # can't since only one line
+        ax.plot(feature_maps['event'][0, 1][fmin_idx],
+                color='blue')
+        ax.plot(feature_maps['event'][1, 1][fmin_idx],
+                color='black')
+    else:
+        # SVM spectrogram coefficients
+        ax.imshow(feature_maps['event'][fm_idx, 1],
+                  vmin={0: 0, 1: 0, 2: 0.75}[fm_idx],
+                  vmax=1, cmap='viridis', aspect='auto')
+        ax.plot([tmin_idx, tmin_idx, tmax_idx, tmax_idx, tmin_idx],
+                [fmin_idx, fmax_idx, fmax_idx, fmin_idx, fmin_idx],
+                color='red', linewidth=0.5)
+        ax.set_yticks([fmin_idx, fmax_idx])
+        ax.set_yticklabels([int(round(freqs[fmin_idx])),
+                            f'{int(round(freqs[fmax_idx]))}    '])
+        ax.invert_yaxis()
     ax.set_ylabel(area, fontsize='small', fontweight='bold')
-    ax.invert_yaxis()
+
     # proportion of area histogram
     ax = axes[idx][1]
-    rects = ax.hist(area_contacts[area].values(), bins=bins, color='gray')[2]
+    rects = ax.hist(area_contacts['event'][area].values(),
+                    bins=bins, color='gray')[2]
     for rect, center in zip(rects, (bins[:-1] + bins[1:]) / 2):
         if center >= prop_thresh:
             rect.set_color('yellow')
@@ -1099,7 +1208,7 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
     ax.set_ylim([0, 50])
     # plot contacts
     brain = mne.viz.Brain(template, **brain_kwargs)
-    for name, prop in area_contacts[area].items():
+    for name, prop in area_contacts['event'][area].items():
         if abs(prop) > prop_thresh:
             brain._renderer.sphere(
                 center=ch_pos['template'][name],
@@ -1170,7 +1279,7 @@ for name, directions in area_directions.items():
             name_freqs[d_name] = areas[name][1]
         # finally, go through the area proportions for each electrode and
         # match them up
-        for ch_name, prop in area_contacts[name].items():
+        for ch_name, prop in area_contacts['event'][name].items():
             if (direction == 1 and prop > prop_thresh) or \
                     (direction == -1 and prop < -prop_thresh):
                 these_labels = [label for label in ch_labels[asegs[1]][ch_name]
@@ -1191,6 +1300,14 @@ for name, directions in area_directions.items():
                         label_dict[d_name].add(f_label)
                     else:
                         label_dict[d_name] = set([f_label])
+
+
+# make sure both sides present
+for hemi1, hemi2 in zip(('Left', 'Right', 'lh', 'rh'),
+                        ('Right', 'Left', 'rh', 'lh')):
+    for label in raw_labels.copy():
+        if hemi1 + '-' in label:
+            raw_labels.add(label.replace(hemi1 + '-', hemi2 + '-'))
 
 
 # sort by polar coordinates to wrap frontal to temporal
@@ -1223,6 +1340,16 @@ brain.add_volume_labels(
                                          cortex=False)]
             for label in raw_labels], fill_hole_size=1)
 
+brain2 = mne.viz.Brain(template, hemi=None,
+                       **dict(brain_kwargs, background='black'))
+subcortical_labels = [label for label in raw_labels if
+                      'ctx' not in label and 'Cerebral' not in label]
+brain2.add_volume_labels(
+    aseg, labels=subcortical_labels, legend=False,
+    colors=[label_colors[format_label_dk(label, combine_hemi=True,
+                                         cortex=False)]
+            for label in subcortical_labels], fill_hole_size=1)
+
 label_image = np.zeros((len(labels), n_names), dtype=int)
 for i, name in enumerate(names):
     for j, label in enumerate(labels):
@@ -1230,7 +1357,7 @@ for i, name in enumerate(names):
             label_image[j, i] = i + 1
 
 fig = plt.figure(figsize=(4, 8), facecolor='black')
-gs = fig.add_gridspec(2, 2, height_ratios=(3, 1))
+gs = fig.add_gridspec(2, 3, height_ratios=(3, 1))
 
 # table of activations
 ax = fig.add_subplot(gs[0, :])
@@ -1270,6 +1397,14 @@ ax3.axis('off')
 ax3.imshow(brain.screenshot())
 ax3.set_title('Bottom up', color='w')
 
+# subcortical plot
+brain2.show_view(azimuth=120, elevation=100, distance=0.2,
+                 focalpoint=(0, 0, -0.02))
+ax4 = fig.add_subplot(gs[1, 2])
+ax4.axis('off')
+ax4.imshow(brain2.screenshot())
+ax4.set_title('Subcortex', color='w')
+
 fig.subplots_adjust(hspace=0.15, wspace=0, top=0.75, bottom=0,
                     left=0.05, right=1)
 # move table right to make room for labels
@@ -1282,3 +1417,60 @@ fig.text(0.02, 0.22, 'b', color='w', fontsize=12)
 for ext in exts:
     fig.savefig(op.join(fig_dir, f'feature_table.{ext}'),
                 facecolor=fig.get_facecolor(), dpi=300)
+
+
+# %%
+# Figure 11: Comparison with the cue event
+
+fig, axes = plt.subplots(3, 2, figsize=(8, 8))
+for idx, (cluster_map1, cluster_map2, (ax1, ax2)) in enumerate(
+        zip(feature_maps['go_event'][:, 1],
+            feature_maps['event'][:, 1], axes)):
+    vmin = 0 if idx < 2 else 0.75  # sig_thresh
+    c = ax1.imshow(cluster_map1, vmin=vmin, vmax=1,
+                   cmap='viridis', aspect='auto')
+    fig.colorbar(c, ax=ax1)
+    c = ax2.imshow(cluster_map2, vmin=vmin, vmax=1,
+                   cmap='viridis', aspect='auto')
+    fig.colorbar(c, ax=ax2)
+    for ax, event in zip((ax1, ax2), ('go_event', 'event')):
+        ax.set_xticks(np.linspace(0, spec_shape[1], 5))
+        ax.set_xticklabels(np.concatenate(
+            [times[event][::spec_shape[1] // 4],
+             [times[event][-1]]]).round(2))
+        ax.invert_yaxis()
+    ax1.set_ylabel('Frequency (Hz)')
+    ax1.set_yticks(range(len(freqs)))
+    ax1.set_yticklabels([f'{f}        ' if i % 2 else f for i, f in
+                         enumerate(np.array(freqs).round(
+                         ).astype(int))], fontsize=5)
+    ax2.set_yticks([])
+    for ax in (ax1, ax2):
+        if idx == 0:
+            ax.set_title('Proportion of\nSignificant Clusters',
+                         fontsize=10, pad=2)
+        elif idx == 1:
+            ax.set_title('Proportion of Positive\nSignificant Clusters',
+                         fontsize=10, pad=2)
+        else:
+            ax.set_title('Average Accuracy of\nSignificant Clusters',
+                         fontsize=10, pad=2)
+
+for ax in axes[-1]:
+    ax.set_xlabel('Time (s)')
+
+fig.text(0.04, 0.95, 'a', fontsize=24)
+fig.text(0.52, 0.95, 'b', fontsize=24)
+fig.text(0.04, 0.63, 'c', fontsize=24)
+fig.text(0.52, 0.63, 'd', fontsize=24)
+fig.text(0.04, 0.31, 'e', fontsize=24)
+fig.text(0.52, 0.31, 'f', fontsize=24)
+
+fig.text(0.26, 1, 'Go Cue-Locked', ha='center', va='top',
+         fontsize=12, weight='bold')
+fig.text(0.72, 1, 'Response-Locked', ha='center', va='top',
+         fontsize=12, weight='bold')
+
+fig.tight_layout()
+for ext in exts:
+    fig.savefig(op.join(fig_dir, f'feature_map_comparison.{ext}'), dpi=300)
