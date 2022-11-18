@@ -162,8 +162,8 @@ for event in area_contacts:
         for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
             fmin_idx = np.argmin(abs(freqs - fmin))
             fmax_idx = np.argmin(abs(freqs - fmax))
-            tmin_idx = np.argmin(abs(times - tmin))
-            tmax_idx = np.argmin(abs(times - tmax))
+            tmin_idx = np.argmin(abs(times[event] - tmin))
+            tmax_idx = np.argmin(abs(times[event] - tmax))
             this_area = mask[slice(fmin_idx, fmax_idx + 1),
                              slice(tmin_idx, tmax_idx + 1)]
             area_contacts[event][area][name] = \
