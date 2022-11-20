@@ -1182,6 +1182,7 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
                 color='blue')
         ax.plot(feature_maps['event'][1, 1][fmin_idx],
                 color='black')
+        ax.set_ylim([0, 1])
     else:
         # SVM spectrogram coefficients
         ax.imshow(feature_maps['event'][fm_idx, 1],
