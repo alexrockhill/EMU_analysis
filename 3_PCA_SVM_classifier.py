@@ -152,7 +152,8 @@ scores = dict(event=dict(), go_event=dict(), null=dict())
 images = dict(event=dict(), go_event=dict(), null=dict())
 
 clusters = dict(event=dict(), go_event=dict(), null=dict())
-threshold = stats.distributions.t.ppf(1 - alpha, len(subjects) - 1)
+n_contacts = 979
+threshold = stats.distributions.t.ppf(1 - alpha, n_contacts - 1)
 
 rng = np.random.default_rng(seed=33)
 
