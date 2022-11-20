@@ -201,6 +201,9 @@ for sub in subjects:  # first, find associated labels
         ch_pos['template'][f'sub-{sub}_ch-{ch_name}'] = this_pos
 
 
+ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
+                   'white-matter', 'wm-', 'cc_', 'cerebellum',
+                   'brain-stem')
 # get data for removing multiple
 aseg_data = list()
 aseg_trans = list()
@@ -229,6 +232,11 @@ for sub in subjects:  # first, find associated labels
                     labels.remove(label)
             # fix multiple
             if len(labels) > 1:
+                labels_filtered = [label for label in labels if not
+                                   any([kw in label.lower()
+                                        for kw in ignore_keywords])]
+                if len(labels_filtered) >= 1:  # assign gray matter first
+                    labels = labels_filtered
                 this_pos = montage.get_positions()['ch_pos'][ch_name]
                 min_dists = list()
                 for label in labels:
