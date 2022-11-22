@@ -614,7 +614,8 @@ ax.set_position((pos.x0, pos.y0 - 0.05, pos.width, pos.height))
 
 fig.subplots_adjust(top=0.98, bottom=0.1, left=0.1, right=0.98)
 for ext in exts:
-    fig.savefig(op.join(fig_dir, f'schematic.{ext}'), dpi=300)
+    fig.savefig(op.join(fig_dir, f'schematic.{ext}'), dpi=300,
+                pil_kwargs={'compression': 'tiff_lzw'})
 
 # %%
 # Figure 2: Individual implant plots to show sampling
@@ -686,7 +687,8 @@ for ax in axes[1::2].flatten():
     ax.set_position((pos.x0 + 0.02, pos.y0, pos.width, pos.height))
 
 for ext in exts:
-    fig.savefig(op.join(fig_dir, f'coverage.{ext}'), dpi=300)
+    fig.savefig(op.join(fig_dir, f'coverage.{ext}'), dpi=300,
+                pil_kwargs={'compression': 'tiff_lzw'})
 
 # %%
 # Figure 3: histogram of classification accuracies
@@ -719,7 +721,8 @@ for event in ('event', 'go_event'):
     ax.legend(handles=[not_sig_patch, sig_patch])
     fig.suptitle('PCA Linear SVM Classification Accuracies')
     for ext in exts:
-        fig.savefig(op.join(fig_dir, f'{event}_score_hist.{ext}'), dpi=300)
+        fig.savefig(op.join(fig_dir, f'{event}_score_hist.{ext}'), dpi=300,
+                    pil_kwargs={'compression': 'tiff_lzw'})
 
     print('{} Paired t-test p-value: {}'.format(
         event.replace('_', ' ').capitalize(),
@@ -887,7 +890,8 @@ for event in ('event', 'go_event'):
                      linewidth=0.5, foreground=density_colors[i])])
     fig.text(0.1, 0.3, 'd')
     for ext in exts:
-        fig.savefig(op.join(fig_dir, f'{event}_high_accuracy.{ext}'), dpi=300)
+        fig.savefig(op.join(fig_dir, f'{event}_high_accuracy.{ext}'), dpi=300,
+                    pil_kwargs={'compression': 'tiff_lzw'})
 
 # %%
 # Figure 5: Accuracy by label region of interest
@@ -963,7 +967,8 @@ fig.tight_layout()
 fig.subplots_adjust(top=0.95, bottom=0.07)
 for ext in exts:
     fig.savefig(op.join(fig_dir, f'label_accuracies.{ext}'),
-                facecolor=fig.get_facecolor(), dpi=300)
+                facecolor=fig.get_facecolor(), dpi=300,
+                pil_kwargs={'compression': 'tiff_lzw'})
 
 
 # %%
@@ -1028,7 +1033,8 @@ for i, sub in enumerate(subjects):
         ax2.set_xlabel('Time (s)')
 
 for ext in exts:
-    fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300)
+    fig.savefig(op.join(fig_dir, f'svm_csp_comparison.{ext}'), dpi=300,
+                pil_kwargs={'compression': 'tiff_lzw'})
 
 # linear regression
 res = stats.linregress(tf_means, scores_means)
@@ -1106,7 +1112,8 @@ for (ax, ax2), name, view in zip(axes, contacts_int, views):
 
 fig.tight_layout()
 for ext in exts:
-    fig.savefig(op.join(fig_dir, f'contacts_of_interest.{ext}'), dpi=300)
+    fig.savefig(op.join(fig_dir, f'contacts_of_interest.{ext}'), dpi=300,
+                pil_kwargs={'compression': 'tiff_lzw'})
 
 # %%
 # Figure 8: Feature maps
@@ -1156,7 +1163,8 @@ for event in ('event', 'go_event'):
 
     fig.tight_layout()
     for ext in exts:
-        fig.savefig(op.join(fig_dir, f'{event}_feature_map.{ext}'), dpi=300)
+        fig.savefig(op.join(fig_dir, f'{event}_feature_map.{ext}'), dpi=300,
+                    pil_kwargs={'compression': 'tiff_lzw'})
 
 # %%
 # Figure 9: Anatomical Locations of Significant Correlations Areas
@@ -1262,7 +1270,8 @@ for ax in axes[:, 1]:
     ax.spines['right'].set_visible(False)
 
 for ext in exts:
-    fig.savefig(op.join(fig_dir, f'feature_anatomy.{ext}'), dpi=300)
+    fig.savefig(op.join(fig_dir, f'feature_anatomy.{ext}'), dpi=300,
+                pil_kwargs={'compression': 'tiff_lzw'})
 
 # %%
 # Figure 10: Anatomical Locations of Spectral Features
@@ -1425,7 +1434,8 @@ fig.text(0.02, 0.85, 'a', color='w', fontsize=12)
 fig.text(0.02, 0.22, 'b', color='w', fontsize=12)
 for ext in exts:
     fig.savefig(op.join(fig_dir, f'feature_table.{ext}'),
-                facecolor=fig.get_facecolor(), dpi=300)
+                facecolor=fig.get_facecolor(), dpi=300,
+                pil_kwargs={'compression': 'tiff_lzw'})
 
 
 # %%
@@ -1482,4 +1492,5 @@ fig.text(0.72, 1, 'Response-Locked', ha='center', va='top',
 
 fig.tight_layout()
 for ext in exts:
-    fig.savefig(op.join(fig_dir, f'feature_map_comparison.{ext}'), dpi=300)
+    fig.savefig(op.join(fig_dir, f'feature_map_comparison.{ext}'), dpi=300,
+                pil_kwargs={'compression': 'tiff_lzw'})
