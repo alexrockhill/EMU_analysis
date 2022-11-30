@@ -1070,7 +1070,7 @@ for (ax, ax2), name, view in zip(axes, contacts_int, views):
                          if not letter.isdigit()])
     title_name = name.replace('sub-', 'Subject ').replace(
         '_ch-', ' ').replace(elec_name, elec_name + ' ')
-    score = scores[name]
+    score = scores['event'][name]
     ax.set_title(f'{title_name}, Test Accuracy {np.round(score, 2)}')
     elec = [name2 for name2 in ch_pos['individual'] if
             f'sub-{sub}_' in name2 and elec_name in name2]
