@@ -160,7 +160,7 @@ for sub in subjects:
 
 
 # %%
-# Perform automatic trial rejection using autoreject
+# Perform automatic trial rejection
 for sub in subjects:
     raw = load_raw(sub)
     keep = reject_epochs(raw)
