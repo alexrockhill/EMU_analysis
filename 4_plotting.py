@@ -259,8 +259,15 @@ for name, labels in ch_labels[asegs[1]].items():
 # check number unlabelled
 unlabelled = list()
 for name, labels in ch_labels[asegs[1]].items():
-    if len(labels) == 0:
+    if len(labels) == 0 and not np.isnan(ch_pos['individual'][name]).any():
         unlabelled.append(name)
+
+
+brain = mne.viz.Brain(template, **brain_kwargs)
+for name in unlabelled:
+    if name in ch_pos['individual']:
+        brain._renderer.sphere(center=ch_pos['individual'][name],
+                               color='yellow', scale=0.005)
 
 
 def format_label_dk(label, combine_hemi=False, cortex=True):

@@ -35,6 +35,30 @@ for sub in subjects:
         subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
 
 
+''' Fix surface RAS, should be scanner RAS
+for sub in subjects:
+    raw = load_raw(sub)
+    trans = mne.coreg.estimate_head_mri_t(
+        f'sub-{sub}', op.join(bids_root, 'freesurfer'))
+    info = mne.io.read_info(op.join(
+        bids_root, 'derivatives', f'sub-{sub}',
+        'ieeg', f'sub-{sub}_task-SlowFast_info.fif'))
+    montage = mne.channels.make_dig_montage(
+        dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
+        coord_frame='head')
+    montage.apply_trans(trans)
+    mne_bids.convert_montage_to_ras(
+        montage, subject=f'sub-{sub}',
+        subjects_dir=op.join(bids_root, 'freesurfer'))
+    montage.rename_channels({ch: ch.replace('-20000', '').replace('-2000', '')
+                             for ch in montage.ch_names})
+    raw.set_montage(montage)
+    mne_bids.dig._write_electrodes_tsv(raw, op.join(
+        bids_root, f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_space-ACPC_electrodes.tsv'), 'ieeg', overwrite=True)
+'''
+
+
 # %%
 # For a few subjects the above didn't work and so this was used to
 # align (11 and 12). This has since been fixed in MNE-Python (using
