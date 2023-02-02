@@ -36,6 +36,7 @@ for sub in subjects:
 
 
 ''' Fix surface RAS, should be scanner RAS
+import numpy as np
 for sub in subjects:
     raw = load_raw(sub)
     trans = mne.coreg.estimate_head_mri_t(
@@ -56,6 +57,22 @@ for sub in subjects:
     mne_bids.dig._write_electrodes_tsv(raw, op.join(
         bids_root, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_space-ACPC_electrodes.tsv'), 'ieeg', overwrite=True)
+
+    T1_mgz = nib.load(op.join(bids_root, 'derivatives', 'freesurfer-7.3.2',
+                              f'sub-{sub}', 'mri', 'T1.mgz'))
+    T1_nii = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
+                              f'sub-{sub}_T1w.nii.gz'))
+    reg_affine = mne.transforms.compute_volume_registration(
+        T1_mgz, T1_nii, 'rigid')[0]
+    mne.transforms.apply_trans(np.linalg.inv(reg_affine), [0, 0, 0])
+    mne.transforms.apply_trans(np.linalg.inv(reg_affine), [0, -25, 0])
+
+for sub in subjects:
+    fname = f'{bids_root}/sub-{sub}/ieeg/sub-{sub}_space-ACPC_electrodes.tsv'
+    df = pd.read_csv(fname, sep='\t')
+    df['name'] = [n.replace(' ', '') for n in df['name']]
+    df['size'] = 'n/a'
+    df.to_csv(fname, sep='\t', index=False)
 '''
 
 
