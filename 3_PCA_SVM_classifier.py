@@ -21,7 +21,7 @@ from params import SUBJECTS as subjects
 from params import ALPHA as alpha
 
 
-subjects_dir = op.join(bids_root, 'derivatives')
+subjects_dir = op.join(bids_root, 'derivatives', 'freesurfer-7.3.2')
 out_dir = op.join(bids_root, 'derivatives', 'analysis_data')
 spec_dir = op.join(plot_dir, 'derivatives', 'spectrogram_plots')
 

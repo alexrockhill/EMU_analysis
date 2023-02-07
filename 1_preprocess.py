@@ -14,7 +14,7 @@ from params import SUBJECTS as subjects
 from params import TASK as task
 from params import TEMPLATE as template
 
-subjects_dir = op.join(bids_root, 'derivatives')
+subjects_dir = op.join(bids_root, 'derivatives', 'freesurfer-7.3.2')
 path = mne_bids.BIDSPath(root=bids_root, task=task)
 out_dir = op.join(bids_root, 'derivatives', 'analysis_data')
 
@@ -32,7 +32,7 @@ for sub in subjects:
     CT_aligned = mne.transforms.apply_volume_registration(
         CT_orig, T1, reg_affine)
     nib.save(CT_aligned, op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
+        bids_root, 'derivatives', f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
 
 
 ''' Fix surface RAS, should be scanner RAS
@@ -63,9 +63,10 @@ for sub in subjects:
     T1_nii = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
                               f'sub-{sub}_T1w.nii.gz'))
     reg_affine = mne.transforms.compute_volume_registration(
-        T1_mgz, T1_nii, 'rigid')[0]
-    mne.transforms.apply_trans(np.linalg.inv(reg_affine), [0, 0, 0])
-    mne.transforms.apply_trans(np.linalg.inv(reg_affine), [0, -25, 0])
+        T1_mgz, T1_nii, 'rigids')[0]
+    ac = mne.transforms.apply_trans(np.linalg.inv(reg_affine), [0, 0, 0])
+    pc = mne.transforms.apply_trans(np.linalg.inv(reg_affine), [0, -25, 0])
+    print(sub, 'AC', ac, 'PC', pc)
 
 for sub in subjects:
     fname = f'{bids_root}/sub-{sub}/ieeg/sub-{sub}_space-ACPC_electrodes.tsv'
@@ -113,9 +114,9 @@ for sub in subjects:
     gui = mne.gui.locate_ieeg(raw.info, trans, CT_aligned,
                               subject=f'sub-{sub}', subjects_dir=subjects_dir)
     while input('Finished, save to disk? (y/N)\t') != 'y':
-        mne.io.write_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                                  f'sub-{sub}_task-{task}_info.fif'),
-                          raw.info)
+        mne.io.write_info(op.join(
+            bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+            f'sub-{sub}_task-{task}_info.fif'), raw.info)
 
 # %%
 # Warp to template, takes ~15 minutes per subject, no user input
@@ -152,12 +153,11 @@ for sub in subjects:
     # now go back to "head" coordinates to save to raw
     montage_warped.apply_trans(mne.transforms.invert_transform(template_trans))
     raw.set_montage(montage_warped, on_missing='warn')
-    mne.io.write_info(
-        op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                f'sub-{sub}_template-{template}_task-{task}_info.fif'),
-        raw.info)
-    nib.save(elec_image, op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                                 'elec_image.mgz'))
+    mne.io.write_info(op.join(
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_template-{template}_task-{task}_info.fif'), raw.info)
+    nib.save(elec_image, op.join(
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg', 'elec_image.mgz'))
 
 
 # %%
@@ -165,14 +165,15 @@ for sub in subjects:
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 for sub in subjects:
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     brain = mne.viz.Brain(f'sub-{sub}', subjects_dir=subjects_dir,
                           cortex='low_contrast', alpha=0.2, background='white')
     brain.add_sensors(info, trans)
     # plot warped
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
         f'sub-{sub}_template-{template}_task-{task}_info.fif'))
     brain = mne.viz.Brain(template, subjects_dir=subjects_dir,
                           cortex='low_contrast', alpha=0.2, background='white')
@@ -186,7 +187,8 @@ for sub in subjects:
     path.update(subject=str(sub))
     raw = mne_bids.read_raw_bids(path)
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
     for ch in info['chs']:
         raw.info['chs'][raw.ch_names.index(ch['ch_name'])] = ch
     with raw.info._unlock():

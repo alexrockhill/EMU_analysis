@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 import mne
-from mne.gui._ieeg_locate_gui import _CMAP
+from mne.gui._ieeg_locate import _CMAP
 import nibabel as nib
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -54,12 +54,15 @@ if not op.isdir(fig_dir):
 
 
 # get plotting information
-subjects_dir = op.join(bids_root, 'derivatives')
+subjects_dir = op.join(bids_root, 'derivatives', 'freesurfer-7.3.2')
 brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
                     subjects_dir=subjects_dir, units='m')
 lut, colors = mne._freesurfer.read_freesurfer_lut()
 cmap = plt.get_cmap('viridis')
-template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
+template_subjects_dir = op.join(
+    os.environ['FREESURFER_HOME'], 'subjects')
+template_trans = mne.coreg.estimate_head_mri_t(
+    template, template_subjects_dir)
 
 # get svm information
 scores, clusters, images, pca_vars, svm_coef = \
@@ -172,11 +175,11 @@ for event in area_contacts:
 
 # channel positions in template and individual
 ch_pos = {'template': dict(), 'individual': dict()}
-template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 for sub in subjects:  # first, find associated labels
     # individual
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
     montage = mne.channels.make_dig_montage(
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
         coord_frame='head')
@@ -189,7 +192,7 @@ for sub in subjects:  # first, find associated labels
 
     # template
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg',
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
         f'sub-{sub}_template-{template}_task-{task}_info.fif'))
     montage = mne.channels.make_dig_montage(
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
@@ -215,7 +218,8 @@ for aseg in asegs:
 ch_labels = {aseg: dict() for aseg in asegs}
 for sub in subjects:  # first, find associated labels
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     montage = mne.channels.make_dig_montage(
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
@@ -324,7 +328,7 @@ raw_data = 1e3 * raw._data[i:i + n_channels,
 raw_data -= raw_data.mean(axis=1)[:, None]
 
 keep = np.array(pd.read_csv(op.join(
-    subjects_dir, f'sub-{sub}', 'ieeg',
+    bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
     f'sub-{sub}_reject_mask.tsv'), sep='\t')['keep'])
 
 event, tmin, tmax = event_dict['event']
@@ -642,8 +646,9 @@ axes[0, 1].set_title('Top down')
 axes[0, 2].set_title('Left front')
 for i, sub in enumerate(subjects):
     axes[i, 0].set_ylabel(f'Subject {sub}')
-    info = mne.io.read_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                                    f'sub-{sub}_task-{task}_info.fif'))
+    info = mne.io.read_info(op.join(
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     brain = mne.viz.Brain(f'sub-{sub}', **brain_kwargs)
     groups = dict()
@@ -1013,8 +1018,9 @@ for i, sub in enumerate(subjects):
     # CSP plot
     tf_scores = np.load(op.join(
         data_dir, f'sub-{sub}_csp_tf_scores.npz'))['arr_0']
-    info = mne.io.read_info(op.join(subjects_dir, f'sub-{sub}', 'ieeg',
-                                    f'sub-{sub}_task-{task}_info.fif'))
+    info = mne.io.read_info(op.join(
+        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        f'sub-{sub}_task-{task}_info.fif'))
     av_tfr = mne.time_frequency.AverageTFR(
         mne.create_info(['freq'], info['sfreq']), tf_scores[np.newaxis, :],
         windows, csp_freqs, 1)

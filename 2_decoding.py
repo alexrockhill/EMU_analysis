@@ -24,7 +24,7 @@ f_buffer = 0.5
 windows = np.linspace(0, 2, 11)
 windows = (windows[1:] + windows[:-1]) / 2  # take mean
 
-subjects_dir = op.join(bids_root, 'derivatives')
+subjects_dir = op.join(bids_root, 'derivatives', 'freesurfer-7.3.2')
 out_dir = op.join(bids_root, 'derivatives', 'analysis_data')
 
 if not op.isdir(out_dir):

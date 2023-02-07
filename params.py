@@ -1,7 +1,7 @@
 import numpy as np
 
 RAW_DATA_DIR = '/home/alex/SwannLab/EMU_data'
-BIDS_ROOT = '/home/alex/SwannLab/EMU_data_BIDS'
+BIDS_ROOT = '/home/alex/mne_data/ds004085'
 PLOT_DIR = '/home/alex/SwannLab/EMU_analysis'
 EXTENSIONS = ['tiff', 'png']
 SUBJECTS = [1, 2, 5, 6, 9, 10, 11, 12]
