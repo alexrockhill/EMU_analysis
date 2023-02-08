@@ -15,6 +15,7 @@ from params import TASK as task
 from params import TEMPLATE as template
 
 subjects_dir = op.join(bids_root, 'derivatives', 'freesurfer-7.3.2')
+ieeg_dir = op.join(bids_root, 'derivatives', 'mne-ieeg')
 path = mne_bids.BIDSPath(root=bids_root, task=task)
 out_dir = op.join(bids_root, 'derivatives', 'analysis_data')
 
@@ -27,7 +28,7 @@ for sub in subjects:
     reg_affine, _ = mne.transforms.compute_volume_registration(
         CT_orig, T1, pipeline='rigids')
     np.savez_compressed(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'),
+        ieeg_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'),
         reg_affine=reg_affine)
     CT_aligned = mne.transforms.apply_volume_registration(
         CT_orig, T1, reg_affine)
@@ -49,8 +50,7 @@ for sub in subjects:
         coord_frame='head')
     montage.apply_trans(trans)
     mne_bids.convert_montage_to_ras(
-        montage, subject=f'sub-{sub}',
-        subjects_dir=op.join(bids_root, 'freesurfer'))
+        montage, subject=f'sub-{sub}', subjects_dir=subjects_dir)
     montage.rename_channels({ch: ch.replace('-20000', '').replace('-2000', '')
                              for ch in montage.ch_names})
     raw.set_montage(montage)
@@ -58,12 +58,17 @@ for sub in subjects:
         bids_root, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_space-ACPC_electrodes.tsv'), 'ieeg', overwrite=True)
 
-    T1_mgz = nib.load(op.join(bids_root, 'derivatives', 'freesurfer-7.3.2',
+    T1_mgz = nib.load(op.join(subjects_dir,
                               f'sub-{sub}', 'mri', 'T1.mgz'))
     T1_nii = nib.load(op.join(bids_root, f'sub-{sub}', 'anat',
                               f'sub-{sub}_T1w.nii.gz'))
     reg_affine = mne.transforms.compute_volume_registration(
         T1_mgz, T1_nii, 'rigids')[0]
+    os.makedirs(op.join(ieeg_dir, f'sub-{sub}', 'MR', 'reg_affine.npz'),
+                exist_ok=True)
+    np.savez_compressed(op.join(
+        ieeg_dir, f'sub-{sub}', 'MR', 'reg_affine.npz'),
+        reg_affine=reg_affine)
     ac = mne.transforms.apply_trans(np.linalg.inv(reg_affine), [0, 0, 0])
     pc = mne.transforms.apply_trans(np.linalg.inv(reg_affine), [0, -25, 0])
     print(sub, 'AC', ac, 'PC', pc)
@@ -97,7 +102,7 @@ CT_aligned = nib.load(op.join(subjects_dir, f'sub-{sub}',
 reg_affine, _ = mne.transforms.compute_volume_registration(
     CT_orig, CT_aligned, pipeline='rigids')
 np.savez_compressed(op.join(
-    subjects_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'),
+    ieeg_dir, f'sub-{sub}', 'CT', 'reg_affine.npz'),
     reg_affine=reg_affine)
 '''
 
@@ -109,13 +114,13 @@ for sub in subjects:
     raw.set_montage(None)
     T1 = nib.load(op.join(subjects_dir, f'sub-{sub}', 'mri', 'T1.mgz'))
     CT_aligned = nib.load(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
+        ieeg_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     gui = mne.gui.locate_ieeg(raw.info, trans, CT_aligned,
                               subject=f'sub-{sub}', subjects_dir=subjects_dir)
     while input('Finished, save to disk? (y/N)\t') != 'y':
         mne.io.write_info(op.join(
-            bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+            ieeg_dir, f'sub-{sub}', 'ieeg',
             f'sub-{sub}_task-{task}_info.fif'), raw.info)
 
 # %%
@@ -133,7 +138,7 @@ for sub in subjects:
     path.update(subject=str(sub))
     raw = mne_bids.read_raw_bids(path)
     info = mne.io.read_info(op.join(
-        subjects_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
+        ieeg_dir, f'sub-{sub}', 'ieeg', f'sub-{sub}_task-{task}_info.fif'))
     raw.drop_channels([ch for ch in raw.ch_names if ch not in info.ch_names])
     raw.info = info
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
@@ -144,7 +149,7 @@ for sub in subjects:
     montage = raw.get_montage()
     montage.apply_trans(trans)
     CT_aligned = nib.load(op.join(
-        subjects_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
+        ieeg_dir, f'sub-{sub}', 'CT', 'CT_aligned.mgz'))
     montage_warped, elec_image, warped_elec_image = mne.warp_montage_volume(
         montage, CT_aligned, reg_affine, sdr_morph,
         subject_from=f'sub-{sub}', subject_to=template,
@@ -154,10 +159,10 @@ for sub in subjects:
     montage_warped.apply_trans(mne.transforms.invert_transform(template_trans))
     raw.set_montage(montage_warped, on_missing='warn')
     mne.io.write_info(op.join(
-        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        ieeg_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_template-{template}_task-{task}_info.fif'), raw.info)
     nib.save(elec_image, op.join(
-        bids_root, 'derivatives', f'sub-{sub}', 'ieeg', 'elec_image.mgz'))
+        ieeg_dir, f'sub-{sub}', 'ieeg', 'elec_image.mgz'))
 
 
 # %%
@@ -165,7 +170,7 @@ for sub in subjects:
 template_trans = mne.coreg.estimate_head_mri_t(template, subjects_dir)
 for sub in subjects:
     info = mne.io.read_info(op.join(
-        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        ieeg_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     brain = mne.viz.Brain(f'sub-{sub}', subjects_dir=subjects_dir,
@@ -208,6 +213,6 @@ for sub in subjects:
     raw = load_raw(sub)
     keep = reject_epochs(raw)
     pd.DataFrame(dict(keep=keep)).to_csv(
-        op.join(subjects_dir, f'sub-{sub}', 'ieeg',
+        op.join(ieeg_dir, f'sub-{sub}', 'ieeg',
                 f'sub-{sub}_reject_mask.tsv'), sep='\t', index=False)
     plot_evoked(raw, sub, keep)

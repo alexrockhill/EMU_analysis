@@ -55,6 +55,7 @@ if not op.isdir(fig_dir):
 
 # get plotting information
 subjects_dir = op.join(bids_root, 'derivatives', 'freesurfer-7.3.2')
+ieeg_dir = op.join(bids_root, 'derivatives', 'mne-ieeg')
 brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
                     subjects_dir=subjects_dir, units='m')
 lut, colors = mne._freesurfer.read_freesurfer_lut()
@@ -178,7 +179,7 @@ ch_pos = {'template': dict(), 'individual': dict()}
 for sub in subjects:  # first, find associated labels
     # individual
     info = mne.io.read_info(op.join(
-        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        ieeg_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
     montage = mne.channels.make_dig_montage(
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
@@ -192,7 +193,7 @@ for sub in subjects:  # first, find associated labels
 
     # template
     info = mne.io.read_info(op.join(
-        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        ieeg_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_template-{template}_task-{task}_info.fif'))
     montage = mne.channels.make_dig_montage(
         dict(zip(info.ch_names, [ch['loc'][:3] for ch in info['chs']])),
@@ -211,14 +212,15 @@ ignore_keywords = ('unknown', '-vent', 'choroid-plexus', 'vessel',
 aseg_data = list()
 aseg_trans = list()
 for aseg in asegs:
-    aseg_obj = nib.load(op.join(subjects_dir, template, 'mri', aseg + '.mgz'))
+    aseg_obj = nib.load(op.join(
+        template_subjects_dir, template, 'mri', aseg + '.mgz'))
     aseg_data.append(np.array(aseg_obj.dataobj))
     aseg_trans.append(np.linalg.inv(aseg_obj.header.get_vox2ras_tkr()))
 
 ch_labels = {aseg: dict() for aseg in asegs}
 for sub in subjects:  # first, find associated labels
     info = mne.io.read_info(op.join(
-        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        ieeg_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     montage = mne.channels.make_dig_montage(
@@ -647,7 +649,7 @@ axes[0, 2].set_title('Left front')
 for i, sub in enumerate(subjects):
     axes[i, 0].set_ylabel(f'Subject {sub}')
     info = mne.io.read_info(op.join(
-        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        ieeg_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
     trans = mne.coreg.estimate_head_mri_t(f'sub-{sub}', subjects_dir)
     brain = mne.viz.Brain(f'sub-{sub}', **brain_kwargs)
@@ -1019,7 +1021,7 @@ for i, sub in enumerate(subjects):
     tf_scores = np.load(op.join(
         data_dir, f'sub-{sub}_csp_tf_scores.npz'))['arr_0']
     info = mne.io.read_info(op.join(
-        bids_root, 'derivatives', f'sub-{sub}', 'ieeg',
+        ieeg_dir, f'sub-{sub}', 'ieeg',
         f'sub-{sub}_task-{task}_info.fif'))
     av_tfr = mne.time_frequency.AverageTFR(
         mne.create_info(['freq'], info['sfreq']), tf_scores[np.newaxis, :],
