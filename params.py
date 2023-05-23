@@ -1,8 +1,8 @@
 import numpy as np
 
-RAW_DATA_DIR = '/home/alex/SwannLab/EMU_data'
-BIDS_ROOT = '/home/alex/mne_data/ds004473'
-PLOT_DIR = '/home/alex/SwannLab/EMU_analysis'
+RAW_DATA_DIR = '../EMU_data'
+BIDS_ROOT = '~/mne_data/ds004473'
+PLOT_DIR = '.'
 EXTENSIONS = ['tiff', 'png']
 SUBJECTS = [1, 2, 5, 6, 9, 10, 11, 12]
 TASK = 'SlowFast'
