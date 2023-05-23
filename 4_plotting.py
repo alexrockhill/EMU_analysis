@@ -58,6 +58,8 @@ subjects_dir = op.join(bids_root, 'derivatives', 'freesurfer-7.3.2')
 ieeg_dir = op.join(bids_root, 'derivatives', 'mne-ieeg')
 brain_kwargs = dict(cortex='low_contrast', alpha=0.2, background='white',
                     subjects_dir=subjects_dir, units='m')
+template_brain_kwargs = dict(
+    brain_kwargs, subjects_dir=os.environ['SUBJECTS_DIR'])
 lut, colors = mne._freesurfer.read_freesurfer_lut()
 cmap = plt.get_cmap('viridis')
 template_subjects_dir = op.join(
@@ -269,7 +271,7 @@ for name, labels in ch_labels[asegs[1]].items():
         unlabelled.append(name)
 
 
-brain = mne.viz.Brain(template, **brain_kwargs)
+brain = mne.viz.Brain(template, **template_brain_kwargs)
 for name in unlabelled:
     if name in ch_pos['individual']:
         brain._renderer.sphere(center=ch_pos['individual'][name],
@@ -763,7 +765,7 @@ for event in ('event', 'go_event'):
     tax = fig.add_subplot(gs[3, :3])  # table axis
 
     # color contacts by accuracy
-    brain = mne.viz.Brain(template, **brain_kwargs)
+    brain = mne.viz.Brain(template, **template_brain_kwargs)
     norm = Normalize(vmin=0.5, vmax=1)
     for name, score in scores[event].items():
         if score > sig_thresh:
@@ -803,7 +805,7 @@ for event in ('event', 'go_event'):
     label_names = sorted(list(labels.keys()))
     acc_colors = [cmap(norm(np.mean(labels[name]))) for name in label_names]
 
-    brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
+    brain = mne.viz.Brain(template, **dict(template_brain_kwargs, alpha=0))
     brain.add_volume_labels(aseg=asegs[1], labels=label_names,
                             colors=acc_colors, alpha=1, smooth=0.9)
     # this freesurfer command must be run first for ? = r and l
@@ -848,7 +850,7 @@ for event in ('event', 'go_event'):
     density_colors = [cmap(min([counts[name] / 10, 1.]))
                       for name in label_names]
 
-    brain = mne.viz.Brain(template, **dict(brain_kwargs, alpha=0))
+    brain = mne.viz.Brain(template, **dict(template_brain_kwargs, alpha=0))
     brain.add_volume_labels(aseg=asegs[1], labels=label_names,
                             colors=density_colors, alpha=1, smooth=0.9)
     for hemi in ('lh', 'rh'):
@@ -1239,7 +1241,7 @@ for area, (fm_idx, fmin, fmax, tmin, tmax) in areas.items():
             rect.set_color('blue')
     ax.set_ylim([0, 50])
     # plot contacts
-    brain = mne.viz.Brain(template, **brain_kwargs)
+    brain = mne.viz.Brain(template, **template_brain_kwargs)
     for name, prop in area_contacts['event'][area].items():
         if abs(prop) > prop_thresh:
             brain._renderer.sphere(
@@ -1366,7 +1368,7 @@ label_cmap = LinearSegmentedColormap.from_list(
     'label_cmap', ['black'] + name_colors, N=n_names + 1)
 
 brain = mne.viz.Brain(template, hemi=None,
-                      **dict(brain_kwargs, background='black'))
+                      **dict(template_brain_kwargs, background='black'))
 brain.add_volume_labels(
     aseg, labels=list(raw_labels),
     colors=[label_colors[format_label_dk(label, combine_hemi=True,
@@ -1374,7 +1376,7 @@ brain.add_volume_labels(
             for label in raw_labels], fill_hole_size=1)
 
 brain2 = mne.viz.Brain(template, hemi=None,
-                       **dict(brain_kwargs, background='black'))
+                       **dict(template_brain_kwargs, background='black'))
 subcortical_labels = [label for label in raw_labels if
                       'ctx' not in label and 'Cerebral' not in label]
 brain2.add_volume_labels(
